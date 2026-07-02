@@ -6,9 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
 concurrency:
   group: pages
@@ -17,16 +15,23 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/configure-pages@v5
-        with:
-          enablement: true
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: '.'
-      - id: deployment
-        uses: actions/deploy-pages@v4
+      - name: Publish main to gh-pages
+        run: git push --force origin HEAD:gh-pages
+      - name: Verify site is live
+        run: |
+          base="https://hisnameisbear.github.io/Loadout"
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" "$base/?nocache=$GITHUB_RUN_ID-$i")
+            echo "Attempt $i: $base/ -> $code"
+            if [ "$code" = "200" ]; then
+              m=$(curl -s -o /dev/null -w "%{http_code}" "$base/manifest.webmanifest")
+              s=$(curl -s -o /dev/null -w "%{http_code}" "$base/sw.js")
+              echo "manifest.webmanifest -> $m, sw.js -> $s"
+              [ "$m" = "200" ] && [ "$s" = "200" ] && exit 0
+              echo "Manifest or service worker not reachable"; exit 1
+            fi
+            sleep 10
+          done
+          echo "Site did not return 200 within timeout"; exit 1

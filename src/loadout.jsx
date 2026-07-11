@@ -1053,12 +1053,15 @@ function HistoryView({ sessions, deloadWeeks, onEdit, onDelete, onExport }) {
       </div>
 
       <div className="inline-flex rounded-lg" style={{ background: C.surface2, border: `1px solid ${C.border}`, padding: 2, marginBottom: 12, width: "100%" }}>
-        {[["weeks", "Weeks"], ["sessions", "Sessions"]].map(([v, label]) => (
+        {[["weeks", "Weeks"], ["sessions", "Sessions"], ["trends", "Trends"]].map(([v, label]) => (
           <button key={v} onClick={() => { setView(v); setOpen(null); }} className="rounded-md font-medium" style={{ flex: 1, padding: "8px 0", fontSize: 13, background: view === v ? C.surface3 : "transparent", color: view === v ? C.text : C.faint }}>{label}</button>
         ))}
       </div>
 
       {sessions.length === 0 && <div style={{ color: C.muted, fontSize: 13, textAlign: "center", padding: 24 }}>No sessions logged yet.</div>}
+
+      {/* TRENDS */}
+      {view === "trends" && <TrendsView sessions={sessions} deloadWeeks={deloadWeeks} />}
 
       {/* WEEKS */}
       {view === "weeks" && weeks.map((w) => {
@@ -1145,6 +1148,128 @@ function HistoryView({ sessions, deloadWeeks, onEdit, onDelete, onExport }) {
         );
       })}
     </div>
+  );
+}
+
+/* ============================================================
+   TRENDS VIEW — small-multiple weekly bars per muscle, worst-first
+   ============================================================ */
+function TrendsView({ sessions, deloadWeeks }) {
+  const [win, setWin] = useState(6);
+  const [mode, setMode] = useState("combined"); // 'mev' | 'target' | 'combined'
+  const [openKey, setOpenKey] = useState(null);
+  const realMuscles = MUSCLES.filter((m) => m.mev > 0);
+  const curWeek = startOfWeekISO(todayISO());
+  const dls = deloadWeeks || [];
+  const BAR_H = 36;
+
+  // Oldest -> newest completed weeks, then the current (partial) week, dimmed and excluded from stats.
+  const cols = useMemo(() => {
+    const list = [];
+    for (let i = win; i >= 1; i--) {
+      const wk = addDaysISO(curWeek, -7 * i);
+      list.push({ wk, t: weekTotals(sessions, wk), f: dls.includes(wk) ? 0.5 : 1, dl: dls.includes(wk), current: false });
+    }
+    list.push({ wk: curWeek, t: weekTotals(sessions, curWeek), f: dls.includes(curWeek) ? 0.5 : 1, dl: dls.includes(curWeek), current: true });
+    return list;
+  }, [sessions, win, curWeek, deloadWeeks]);
+
+  const rows = useMemo(() => {
+    const done = cols.filter((c) => !c.current);
+    return realMuscles
+      .map((m) => ({
+        m,
+        mevHits: done.filter((c) => (c.t[m.key] || 0) >= m.mev * c.f).length,
+        tgtHits: done.filter((c) => (c.t[m.key] || 0) >= m.target * c.f).length,
+      }))
+      .sort((a, b) => (mode === "target" ? (a.tgtHits - b.tgtHits) || (a.mevHits - b.mevHits) : (a.mevHits - b.mevHits) || (a.tgtHits - b.tgtHits)));
+  }, [cols, mode]);
+
+  const worst = rows.filter((r) => r.mevHits < win).slice(0, 3);
+  const fmt = (n) => (Number.isInteger(n) ? n : n.toFixed(1).replace(/\.0$/, ""));
+  const wkLabel = (iso) => { const d = parseISO(iso); return `${d.getDate()}/${d.getMonth() + 1}`; };
+  const barColor = (val, m, f) => {
+    if (mode === "mev") return val >= m.mev * f ? C.green : C.red;
+    if (mode === "target") return val >= m.target * f ? C.blue : C.neutral;
+    return tierColor(tierOf(val, m.mev * f, m.target * f));
+  };
+
+  return (
+    <>
+      <div className="flex items-center justify-between" style={{ marginBottom: 10 }}>
+        <div className="inline-flex rounded-lg" style={{ background: C.surface2, border: `1px solid ${C.border}`, padding: 2 }}>
+          {[["mev", "MEV"], ["target", "Target"], ["combined", "Both"]].map(([v, label]) => (
+            <button key={v} onClick={() => setMode(v)} className="rounded-md font-medium" style={{ padding: "6px 10px", fontSize: 12, background: mode === v ? C.surface3 : "transparent", color: mode === v ? C.text : C.faint }}>{label}</button>
+          ))}
+        </div>
+        <div className="inline-flex rounded-lg" style={{ background: C.surface2, border: `1px solid ${C.border}`, padding: 2 }}>
+          {[6, 8, 12].map((n) => (
+            <button key={n} onClick={() => setWin(n)} className="rounded-md font-medium font-mono" style={{ padding: "6px 9px", fontSize: 12, background: win === n ? C.surface3 : "transparent", color: win === n ? C.text : C.faint }}>{n}w</button>
+          ))}
+        </div>
+      </div>
+
+      {worst.length > 0 ? (
+        <div style={{ fontSize: 12, color: C.muted, marginBottom: 10, lineHeight: 1.5 }}>
+          <span style={{ color: C.red }}>● </span>Missed MEV most: {worst.map((r) => `${r.m.name} ${win - r.mevHits}/${win}`).join(" · ")}
+        </div>
+      ) : (
+        <div style={{ fontSize: 12, color: C.green, marginBottom: 10 }}>Every muscle hit MEV in the last {win} weeks.</div>
+      )}
+
+      <div className="rounded-2xl" style={{ background: C.surface, border: `1px solid ${C.border}`, padding: "10px 14px 8px" }}>
+        {/* column labels */}
+        <div className="flex items-center" style={{ gap: 8, marginBottom: 2 }}>
+          <span style={{ width: 74, flexShrink: 0 }} />
+          <div className="flex flex-1" style={{ gap: 3 }}>
+            {cols.map((c, i) => (
+              <div key={c.wk} style={{ flex: 1, textAlign: "center", fontSize: 8.5, color: c.current ? C.faint : C.muted, minWidth: 0 }}>
+                {(win <= 8 || i % 2 === 1 || c.current) ? (c.current ? "now" : wkLabel(c.wk)) : ""}
+                {c.dl && <div style={{ width: 4, height: 4, borderRadius: 99, background: C.blue, margin: "1px auto 0" }} />}
+              </div>
+            ))}
+          </div>
+          <span style={{ width: 62, flexShrink: 0 }} />
+        </div>
+
+        {rows.map(({ m, mevHits, tgtHits }) => {
+          const isOpen = openKey === m.key;
+          return (
+            <div key={m.key} style={{ borderBottom: `1px solid ${C.border}` }}>
+              <div onClick={() => setOpenKey(isOpen ? null : m.key)} className="flex items-center" style={{ gap: 8, padding: "7px 0", cursor: "pointer" }}>
+                <span style={{ width: 74, flexShrink: 0, fontSize: 12.5, color: mevHits === 0 ? C.red : C.text }}>{m.name}</span>
+                <div className="relative flex flex-1" style={{ gap: 3, alignItems: "flex-end", height: BAR_H }}>
+                  <div className="absolute" style={{ left: 0, right: 0, bottom: (m.mev / m.target) * BAR_H, height: 1, background: C.borderLite, opacity: 0.7 }} />
+                  {cols.map((c) => {
+                    const val = c.t[m.key] || 0;
+                    const h = val <= 0 ? 2 : Math.max(3, Math.min(1, val / (m.target * c.f)) * BAR_H);
+                    return <div key={c.wk} style={{ flex: 1, height: h, background: val <= 0 ? C.surface3 : barColor(val, m, c.f), borderRadius: 2, opacity: c.current ? 0.35 : 1 }} />;
+                  })}
+                </div>
+                <span className="flex flex-col font-mono text-right" style={{ width: 62, flexShrink: 0, fontSize: 10.5, lineHeight: 1.5 }}>
+                  <span style={{ color: mevHits === win ? C.green : mevHits <= win / 2 ? C.red : C.text }}>MEV {mevHits}/{win}</span>
+                  <span style={{ color: C.blue }}>tgt {tgtHits}/{win}</span>
+                </span>
+              </div>
+              {isOpen && (
+                <div style={{ padding: "0 0 10px 82px" }}>
+                  {cols.map((c) => {
+                    const val = c.t[m.key] || 0;
+                    return (
+                      <div key={c.wk} className="font-mono" style={{ fontSize: 11, color: C.muted, padding: "1px 0" }}>
+                        {prettyDate(c.wk)}{c.dl ? " · deload" : ""}{c.current ? " · this week" : ""} — <span style={{ color: val <= 0 ? C.faint : barColor(val, m, c.f) }}>{fmt(val)}</span>
+                        <span style={{ color: C.faint }}> /{fmt(m.mev * c.f)}·{fmt(m.target * c.f)}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+        <div style={{ fontSize: 10.5, color: C.faint, paddingTop: 8 }}>Worst first · bar height = sets vs target · line = MEV · current week dimmed, not counted · tap a row for numbers</div>
+      </div>
+    </>
   );
 }
 

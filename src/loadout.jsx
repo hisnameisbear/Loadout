@@ -1164,14 +1164,13 @@ function TrendsView({ sessions, deloadWeeks }) {
   const BAR_H = 36;
 
   // Oldest -> newest completed weeks, then the current (partial) week, dimmed and excluded from stats.
-  const cols = useMemo(() => {
+  // `pre` holds the two weeks before the window so the 3-week moving average starts fully formed.
+  const { cols, pre } = useMemo(() => {
+    const mk = (wk, current) => ({ wk, t: weekTotals(sessions, wk), f: dls.includes(wk) ? 0.5 : 1, dl: dls.includes(wk), current });
     const list = [];
-    for (let i = win; i >= 1; i--) {
-      const wk = addDaysISO(curWeek, -7 * i);
-      list.push({ wk, t: weekTotals(sessions, wk), f: dls.includes(wk) ? 0.5 : 1, dl: dls.includes(wk), current: false });
-    }
-    list.push({ wk: curWeek, t: weekTotals(sessions, curWeek), f: dls.includes(curWeek) ? 0.5 : 1, dl: dls.includes(curWeek), current: true });
-    return list;
+    for (let i = win; i >= 1; i--) list.push(mk(addDaysISO(curWeek, -7 * i), false));
+    list.push(mk(curWeek, true));
+    return { cols: list, pre: [mk(addDaysISO(curWeek, -7 * (win + 2)), false), mk(addDaysISO(curWeek, -7 * (win + 1)), false)] };
   }, [sessions, win, curWeek, deloadWeeks]);
 
   const rows = useMemo(() => {
@@ -1192,6 +1191,21 @@ function TrendsView({ sessions, deloadWeeks }) {
     if (mode === "mev") return val >= m.mev * f ? C.green : C.red;
     if (mode === "target") return val >= m.target * f ? C.blue : C.neutral;
     return tierColor(tierOf(val, m.mev * f, m.target * f));
+  };
+
+  // 3-week moving average of sets ÷ (deload-adjusted) target, per visible completed week.
+  const movingAvg = (m) => {
+    const ratio = (c) => Math.min(1, (c.t[m.key] || 0) / (m.target * c.f));
+    const all = [...pre, ...cols.filter((c) => !c.current)].map(ratio);
+    return all.slice(2).map((_, j) => (all[j] + all[j + 1] + all[j + 2]) / 3);
+  };
+  // Segment colour by slope: falling -> red, flat -> neutral, rising -> green.
+  const slopeColor = (d) => {
+    const t = Math.max(-1, Math.min(1, d / 0.2));
+    const mid = [138, 151, 166], red = [240, 86, 78], grn = [52, 199, 123];
+    const to = t < 0 ? red : grn, k = Math.abs(t);
+    const ch = (i) => Math.round(mid[i] + (to[i] - mid[i]) * k);
+    return `rgb(${ch(0)},${ch(1)},${ch(2)})`;
   };
 
   return (
@@ -1243,8 +1257,18 @@ function TrendsView({ sessions, deloadWeeks }) {
                   {cols.map((c) => {
                     const val = c.t[m.key] || 0;
                     const h = val <= 0 ? 2 : Math.max(3, Math.min(1, val / (m.target * c.f)) * BAR_H);
-                    return <div key={c.wk} style={{ flex: 1, height: h, background: val <= 0 ? C.surface3 : barColor(val, m, c.f), borderRadius: 2, opacity: c.current ? 0.35 : 1 }} />;
+                    return <div key={c.wk} style={{ flex: 1, height: h, background: val <= 0 ? C.surface3 : barColor(val, m, c.f), borderRadius: 2, opacity: c.current ? 0.3 : 0.55 }} />;
                   })}
+                  <svg className="absolute" style={{ left: 0, top: 0, width: "100%", height: BAR_H, pointerEvents: "none" }} viewBox={`0 0 100 ${BAR_H}`} preserveAspectRatio="none">
+                    {(() => {
+                      const ma = movingAvg(m);
+                      const y = (r) => Math.max(2, BAR_H - 2 - r * (BAR_H - 4));
+                      const x = (j) => ((j + 0.5) / cols.length) * 100;
+                      return ma.slice(1).map((v, k) => (
+                        <line key={k} x1={x(k)} y1={y(ma[k])} x2={x(k + 1)} y2={y(v)} stroke={slopeColor(v - ma[k])} strokeWidth={2} strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+                      ));
+                    })()}
+                  </svg>
                 </div>
                 <span className="flex flex-col font-mono text-right" style={{ width: 62, flexShrink: 0, fontSize: 10.5, lineHeight: 1.5 }}>
                   <span style={{ color: mevHits === win ? C.green : mevHits <= win / 2 ? C.red : C.text }}>MEV {mevHits}/{win}</span>
@@ -1267,7 +1291,7 @@ function TrendsView({ sessions, deloadWeeks }) {
             </div>
           );
         })}
-        <div style={{ fontSize: 10.5, color: C.faint, paddingTop: 8 }}>Worst first · bar height = sets vs target · line = MEV · current week dimmed, not counted · tap a row for numbers</div>
+        <div style={{ fontSize: 10.5, color: C.faint, paddingTop: 8 }}>Worst first · bar height = sets vs target · thin line = MEV · trend line = 3-wk moving avg, <span style={{ color: C.green }}>rising</span>/<span style={{ color: C.red }}>falling</span> · current week dimmed, not counted · tap a row for numbers</div>
       </div>
     </>
   );

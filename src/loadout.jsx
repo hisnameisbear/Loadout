@@ -105,6 +105,7 @@ const EXERCISES = [
 const EX_BY_ID = Object.fromEntries(EXERCISES.map((e) => [e.id, e]));
 // Gym normally sees everything (home + outdoor + gym-only); strict mode shows only gym-specific kit.
 // Home/outdoor always filter to their own kit (strict is a no-op for them).
+const exTotal = (e) => Object.values(e.credits).reduce((s, c) => s + c, 0);
 const exForLoc = (loc, strict) => {
   const live = EXERCISES.filter((e) => !e.retired);
   if (loc === "gym") return strict ? live.filter((e) => e.loc.includes("gym")) : live;
@@ -178,8 +179,22 @@ function recentMuscles(sessions, refISO) {
   return map;
 }
 
-/* ---------- Suggester: greedy fill to MEV ---------- */
-function suggestPlan(weekT, location, excludeMuscles, strict) {
+/* ---------- Suggester: greedy fill to MEV, worst 4-week trend first ---------- */
+// Average of weekly sets ÷ (deload-adjusted) target over the last `weeks` completed weeks.
+function trendAverages(sessions, deloadWeeks, weeks = 4) {
+  const cur = startOfWeekISO(todayISO());
+  const cols = [];
+  for (let i = weeks; i >= 1; i--) {
+    const wk = addDaysISO(cur, -7 * i);
+    cols.push({ t: weekTotals(sessions, wk), f: (deloadWeeks || []).includes(wk) ? 0.5 : 1 });
+  }
+  const avg = {};
+  for (const m of MUSCLES) {
+    avg[m.key] = cols.reduce((s, c) => s + Math.min(1, (c.t[m.key] || 0) / (m.target * c.f)), 0) / weeks;
+  }
+  return avg;
+}
+function suggestPlan(weekT, location, excludeMuscles, strict, trendAvg = {}) {
   const plan = []; // {exId, sets}
   const ptot = {};
   const total = (mk) => (weekT[mk] || 0) + (ptot[mk] || 0);
@@ -194,17 +209,15 @@ function suggestPlan(weekT, location, excludeMuscles, strict) {
   const uncoverable = [];
   let guard = 0;
   while (guard++ < 40) {
-    let pick = null, gap = 0;
-    for (const m of MUSCLES) {
-      if (m.mev === 0) continue;
-      if (excludeMuscles.has(m.key)) continue;
-      const g = m.mev - total(m.key);
-      if (g > 0.01 && g > gap) { gap = g; pick = m; }
-    }
+    // Muscles still below this week's MEV, worst 4-week trend first (tie: bigger current gap).
+    const below = MUSCLES.filter((m) => m.mev > 0 && !excludeMuscles.has(m.key) && m.mev - total(m.key) > 0.01)
+      .sort((a, b) => (trendAvg[a.key] ?? 0) - (trendAvg[b.key] ?? 0) || (b.mev - total(b.key)) - (a.mev - total(a.key)));
+    const pick = below[0];
     if (!pick) break;
+    // Primary movers first (highest credit for this muscle), then the most compound (highest total credits).
     const cands = avail
       .filter((e) => (e.credits[pick.key] || 0) > 0)
-      .sort((a, b) => (b.credits[pick.key] || 0) - (a.credits[pick.key] || 0) || (a.maint ? 1 : 0) - (b.maint ? 1 : 0));
+      .sort((a, b) => (b.credits[pick.key] || 0) - (a.credits[pick.key] || 0) || exTotal(b) - exTotal(a) || (a.maint ? 1 : 0) - (b.maint ? 1 : 0));
     if (!cands.length) {
       uncoverable.push(pick.key);
       excludeMuscles.add(pick.key); // skip so loop terminates
@@ -486,7 +499,8 @@ export default function App() {
 
   const runSuggest = () => {
     const exclude = new Set(recentMuscles(state.sessions, draft?.date || todayISO()).keys());
-    const { plan, uncoverable } = suggestPlan(totals, draft?.location || state.lastLocation, exclude, draft?.locStrict);
+    const trendAvg = trendAverages(state.sessions, state.deloadWeeks, 4);
+    const { plan, uncoverable } = suggestPlan(totals, draft?.location || state.lastLocation, exclude, draft?.locStrict, trendAvg);
     if (!plan.length) {
       setToast(uncoverable.length ? "Nothing left to fill at this location." : "Everything's already at MEV for the week.");
       return;
@@ -837,10 +851,12 @@ function PlanView({ draft, totals, factor, state, planned, recent, onLoc, onSugg
                 </div>
                 {open && (
                   <div className="flex flex-wrap" style={{ gap: 6, padding: "0 0 12px 0" }}>
-                    {locExercises.filter((e) => (e.credits[m.key] || 0) > 0).map((e) => (
-                      <AddChip key={e.id} ex={e} inPlan={setsOf(e.id) > 0} muscleKey={m.key} flag={exFlag(e)}
-                        onAdd={() => onSetSets(e.id, setsOf(e.id) > 0 ? setsOf(e.id) + 1 : 3)} />
-                    ))}
+                    {locExercises.filter((e) => (e.credits[m.key] || 0) > 0)
+                      .sort((a, b) => (b.credits[m.key] || 0) - (a.credits[m.key] || 0) || exTotal(b) - exTotal(a))
+                      .map((e) => (
+                        <AddChip key={e.id} ex={e} inPlan={setsOf(e.id) > 0} muscleKey={m.key} flag={exFlag(e)}
+                          onAdd={() => onSetSets(e.id, setsOf(e.id) > 0 ? setsOf(e.id) + 1 : 3)} />
+                      ))}
                     {locExercises.filter((e) => (e.credits[m.key] || 0) > 0).length === 0 && (
                       <span style={{ fontSize: 12, color: C.faint, padding: "2px 0" }}>No {draft.locStrict && draft.location === "gym" ? "gym-only" : draft.location} exercise hits this.</span>
                     )}
@@ -855,7 +871,7 @@ function PlanView({ draft, totals, factor, state, planned, recent, onLoc, onSugg
 
       {mode === "exercise" && (
         <div className="rounded-2xl" style={{ background: C.surface, border: `1px solid ${C.border}`, padding: "8px 12px 10px", marginBottom: 12 }}>
-          {locExercises.map((e) => {
+          {[...locExercises].sort((a, b) => exTotal(b) - exTotal(a)).map((e) => {
             const n = setsOf(e.id);
             return (
               <div key={e.id} className="flex items-center justify-between" style={{ padding: "8px 0", borderBottom: `1px solid ${C.border}` }}>
@@ -1025,7 +1041,7 @@ function LogView({ draft, state, recent, onDate, onLoc, onEditSet, onAddSet, onR
    HISTORY VIEW
    ============================================================ */
 function HistoryView({ sessions, deloadWeeks, onEdit, onDelete, onExport }) {
-  const [view, setView] = useState("weeks");
+  const [view, setView] = useState("trends");
   const [open, setOpen] = useState(null);
   const [confirmId, setConfirmId] = useState(null);
   const sorted = [...sessions].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : (a.id < b.id ? 1 : -1)));
@@ -1217,8 +1233,8 @@ function TrendsView({ sessions, deloadWeeks }) {
           ))}
         </div>
         <div className="inline-flex rounded-lg" style={{ background: C.surface2, border: `1px solid ${C.border}`, padding: 2 }}>
-          {[6, 8, 12].map((n) => (
-            <button key={n} onClick={() => setWin(n)} className="rounded-md font-medium font-mono" style={{ padding: "6px 9px", fontSize: 12, background: win === n ? C.surface3 : "transparent", color: win === n ? C.text : C.faint }}>{n}w</button>
+          {[4, 6, 8, 12].map((n) => (
+            <button key={n} onClick={() => setWin(n)} className="rounded-md font-medium font-mono" style={{ padding: "6px 8px", fontSize: 12, background: win === n ? C.surface3 : "transparent", color: win === n ? C.text : C.faint }}>{n}w</button>
           ))}
         </div>
       </div>

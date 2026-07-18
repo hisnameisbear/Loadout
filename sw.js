@@ -1,4 +1,4 @@
-const CACHE_NAME = 'loadout-v8';
+const CACHE_NAME = 'loadout-v9';
 const PRECACHE = [
   './',
   './index.html',
@@ -9,7 +9,10 @@ const PRECACHE = [
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(PRECACHE))
+    // cache: 'reload' bypasses the HTTP cache so a new version never precaches stale files
+    caches.open(CACHE_NAME).then((cache) =>
+      cache.addAll(PRECACHE.map((url) => new Request(url, { cache: 'reload' })))
+    )
   );
   self.skipWaiting();
 });

@@ -179,6 +179,37 @@ function recentMuscles(sessions, refISO) {
   return map;
 }
 
+/* Display-level recency: same today+yesterday window, but per-muscle levels.
+   - core: never flags at all
+   - biceps/triceps/sidedelts/reardelts: summed exercise credits over the window;
+     >= 1.0 -> 'isolation' (amber warning), > 0 < 1.0 -> 'synergist' (blue FYI)
+   - all other muscles: presence -> 'isolation' (existing amber behaviour, unchanged) */
+const SYNERGIST_LEVEL_MUSCLES = new Set(["biceps", "triceps", "sidedelts", "reardelts"]);
+function recentMuscleLevels(sessions, refISO) {
+  const prev = addDaysISO(refISO, -1);
+  const sums = {};
+  const dates = {};
+  for (const s of sessions) {
+    if (s.date === refISO || s.date === prev) {
+      for (const ex of s.exercises) {
+        const meta = EX_BY_ID[ex.exId];
+        if (!meta) continue;
+        for (const [mk, c] of Object.entries(meta.credits)) {
+          sums[mk] = (sums[mk] || 0) + c;
+          if (!dates[mk] || s.date > dates[mk]) dates[mk] = s.date;
+        }
+      }
+    }
+  }
+  const map = new Map();
+  for (const [mk, sum] of Object.entries(sums)) {
+    if (mk === "core" || sum <= 0) continue;
+    const level = SYNERGIST_LEVEL_MUSCLES.has(mk) && sum < 1 ? "synergist" : "isolation";
+    map.set(mk, { level, date: dates[mk] });
+  }
+  return map;
+}
+
 /* ---------- Suggester: greedy fill to MEV, worst 4-week trend first ---------- */
 // Average of weekly sets ÷ (deload-adjusted) target over the last `weeks` completed weeks.
 function trendAverages(sessions, deloadWeeks, weeks = 4) {
@@ -329,7 +360,7 @@ function MuscleBar({ name, val, mev, target, planned = 0, compact = false, flag 
   return (
     <div className="flex items-center" style={{ gap: 10, padding: compact ? "5px 0" : "7px 0", cursor: onClick ? "pointer" : "default" }} onClick={onClick}>
       <div className="flex items-center" style={{ width: 84, flexShrink: 0, gap: 5 }}>
-        {flag && <span title="worked within 24h" style={{ width: 6, height: 6, borderRadius: 99, background: C.amber, flexShrink: 0 }} />}
+        {flag && <span title={flag === "synergist" ? "synergist work yesterday — fine to train directly" : "worked within 24h"} style={{ width: 6, height: 6, borderRadius: 99, background: flag === "synergist" ? C.blue : C.amber, flexShrink: 0 }} />}
         <span style={{ color: t === "neutral" ? C.faint : C.text, fontSize: 13 }}>{name}</span>
       </div>
       <div className="relative flex-1 rounded-full overflow-hidden" style={{ height: 8, background: C.surface3 }}>
@@ -705,7 +736,7 @@ export default function App() {
           <PlanView
             draft={draft} totals={totals} factor={factor} state={state}
             planned={draftTotalsPlanned()}
-            recent={recentMuscles(state.sessions, draft.date)}
+            recent={recentMuscleLevels(state.sessions, draft.date)}
             onLoc={(loc) => setDraft((d) => (loc === d.location ? { ...d, locStrict: !d.locStrict } : { ...d, location: loc, locStrict: false }))}
             onSuggest={runSuggest}
             onOpenPicker={(mk) => setPicker(mk)}
@@ -721,7 +752,7 @@ export default function App() {
         {tab === "log" && draft && (
           <LogView
             draft={draft} state={state}
-            recent={recentMuscles(state.sessions, draft.date)}
+            recent={recentMuscleLevels(state.sessions, draft.date)}
             onDate={(date) => setDraft((d) => ({ ...d, date }))}
             onLoc={(loc) => setDraft((d) => (loc === d.location ? { ...d, locStrict: !d.locStrict } : { ...d, location: loc, locStrict: false }))}
             onEditSet={editSet} onAddSet={addSetRow} onRemoveSet={removeSetRow}
@@ -743,7 +774,7 @@ export default function App() {
       {picker && draft && (
         <ExercisePicker
           muscleKey={picker} location={draft.location} draft={draft}
-          recent={recentMuscles(state.sessions, draft.date)}
+          recent={recentMuscleLevels(state.sessions, draft.date)}
           onAdd={(exId) => { toggleExerciseInDraft(exId, picker !== "all" ? picker : undefined); }}
           onClose={() => setPicker(null)}
         />
@@ -802,10 +833,20 @@ export default function App() {
 function PlanView({ draft, totals, factor, state, planned, recent, onLoc, onSuggest, onOpenPicker, onSetSets, defaultSetsFor, onMove, onClear, onLog }) {
   const [mode, setMode] = useState("muscle"); // 'muscle' | 'exercise'
   const [expanded, setExpanded] = useState(null);
-  const exFlag = (e) => Object.keys(e.credits).some((mk) => recent.has(mk));
-  const collideKeys = [...new Set(draft.exercises.flatMap((ex) => Object.keys(EX_BY_ID[ex.exId].credits)).filter((mk) => recent.has(mk)))];
+  const exFlag = (e) => {
+    let lvl = null;
+    for (const mk of Object.keys(e.credits)) {
+      const r = recent.get(mk);
+      if (r && r.level === "isolation") return "isolation";
+      if (r) lvl = "synergist";
+    }
+    return lvl;
+  };
+  const draftMuscleKeys = [...new Set(draft.exercises.flatMap((ex) => Object.keys(EX_BY_ID[ex.exId].credits)))];
+  const collideKeys = draftMuscleKeys.filter((mk) => recent.get(mk)?.level === "isolation");
+  const synergistKeys = draftMuscleKeys.filter((mk) => recent.get(mk)?.level === "synergist");
   const collideNames = collideKeys.map((k) => M_BY_KEY[k].name);
-  const lastWorked = collideKeys.map((k) => recent.get(k)).sort().pop();
+  const lastWorked = collideKeys.map((k) => recent.get(k).date).sort().pop();
   const locExercises = exForLoc(draft.location, draft.locStrict);
   const setsOf = (exId) => { const ex = draft.exercises.find((e) => e.exId === exId); return ex ? ex.sets.length : 0; };
 
@@ -821,15 +862,23 @@ function PlanView({ draft, totals, factor, state, planned, recent, onLoc, onSugg
           ⚠ {collideNames.join(", ")} worked {lastWorked ? prettyDate(lastWorked) : "recently"} (within 24h). If that was heavy, keep these moderate — heavy-after-heavy on the same muscle is the one to avoid.
         </div>
       )}
+      {synergistKeys.length > 0 && (
+        <div className="rounded-xl" style={{ border: `1px solid ${C.border}`, padding: "10px 12px", marginBottom: 12, fontSize: 12.5, color: C.blue, lineHeight: 1.5 }}>
+          {synergistKeys.map((k) => `${M_BY_KEY[k].name} worked as a synergist yesterday — fine to train directly.`).join(" ")}
+        </div>
+      )}
 
       {/* Coverage readout */}
       <div className="rounded-2xl" style={{ background: C.surface, border: `1px solid ${C.border}`, padding: "10px 14px 8px", marginBottom: 12 }}>
         <div className="flex items-center justify-between" style={{ marginBottom: 4 }}>
           <span style={{ fontSize: 11, letterSpacing: 1.2, color: C.faint, textTransform: "uppercase" }}>Coverage if logged · week total</span>
-          {[...recent.keys()].length > 0 && <span style={{ fontSize: 10, color: C.amber }}>● worked &lt;24h</span>}
+          <span>
+            {[...recent.values()].some((r) => r.level === "isolation") && <span style={{ fontSize: 10, color: C.amber }}>● worked &lt;24h</span>}
+            {[...recent.values()].some((r) => r.level === "synergist") && <span style={{ fontSize: 10, color: C.blue, marginLeft: 6 }}>● synergist</span>}
+          </span>
         </div>
         {MUSCLES.map((m) => (
-          <MuscleBar key={m.key} name={m.name} val={(totals[m.key] || 0) + (planned[m.key] || 0)} mev={m.mev * factor} target={m.target * factor} compact flag={recent.has(m.key)} />
+          <MuscleBar key={m.key} name={m.name} val={(totals[m.key] || 0) + (planned[m.key] || 0)} mev={m.mev * factor} target={m.target * factor} compact flag={recent.get(m.key)?.level} />
         ))}
       </div>
 
@@ -849,7 +898,7 @@ function PlanView({ draft, totals, factor, state, planned, recent, onLoc, onSugg
               <div key={m.key} style={{ borderBottom: `1px solid ${C.border}` }}>
                 <div onClick={() => setExpanded(open ? null : m.key)} className="flex items-center justify-between" style={{ cursor: "pointer", padding: "10px 0" }}>
                   <div className="flex items-center" style={{ gap: 6 }}>
-                    {recent.has(m.key) && <span title="worked within 24h" style={{ width: 6, height: 6, borderRadius: 99, background: C.amber }} />}
+                    {recent.has(m.key) && <span title={recent.get(m.key).level === "synergist" ? "synergist work yesterday — fine to train directly" : "worked within 24h"} style={{ width: 6, height: 6, borderRadius: 99, background: recent.get(m.key).level === "synergist" ? C.blue : C.amber }} />}
                     <span style={{ fontSize: 14, fontWeight: 500 }}>{m.name}</span>
                     <span className="font-mono" style={{ fontSize: 11, color: tierColor(tierOf(cur, m.mev * factor, m.target * factor)) }}>{Number.isInteger(cur) ? cur : cur.toFixed(1)}/{m.mev * factor}</span>
                   </div>
@@ -883,7 +932,7 @@ function PlanView({ draft, totals, factor, state, planned, recent, onLoc, onSugg
               <div key={e.id} className="flex items-center justify-between" style={{ padding: "8px 0", borderBottom: `1px solid ${C.border}` }}>
                 <div style={{ minWidth: 0, paddingRight: 8 }}>
                   <div className="flex items-center" style={{ gap: 6 }}>
-                    {exFlag(e) && <span title="hits a muscle worked within 24h" style={{ width: 6, height: 6, borderRadius: 99, background: C.amber, flexShrink: 0 }} />}
+                    {exFlag(e) && <span title={exFlag(e) === "synergist" ? "synergist work yesterday — fine to train directly" : "hits a muscle worked within 24h"} style={{ width: 6, height: 6, borderRadius: 99, background: exFlag(e) === "synergist" ? C.blue : C.amber, flexShrink: 0 }} />}
                     <span style={{ fontSize: 14, fontWeight: 600, color: n > 0 ? C.green : C.text }}>{e.name}</span>
                     {e.maint && <span title="maintenance only" style={{ fontSize: 12, color: C.amber }}>⚙</span>}
                   </div>
@@ -942,9 +991,10 @@ function PlanView({ draft, totals, factor, state, planned, recent, onLoc, onSugg
 }
 function AddChip({ ex, inPlan, muscleKey, onAdd, flag }) {
   const cr = ex.credits[muscleKey];
+  const flagCol = flag === "synergist" ? C.blue : C.amber;
   return (
-    <button onClick={onAdd} className="rounded-lg flex items-center" style={{ gap: 5, padding: "7px 10px", fontSize: 12.5, background: inPlan ? C.greenDim : C.surface2, border: `1px solid ${inPlan ? C.green : flag ? C.amber : C.borderLite}`, color: inPlan ? C.green : C.text }}>
-      {flag && !inPlan && <span style={{ width: 5, height: 5, borderRadius: 99, background: C.amber }} />}
+    <button onClick={onAdd} className="rounded-lg flex items-center" style={{ gap: 5, padding: "7px 10px", fontSize: 12.5, background: inPlan ? C.greenDim : C.surface2, border: `1px solid ${inPlan ? C.green : flag === "isolation" ? C.amber : C.borderLite}`, color: inPlan ? C.green : C.text }}>
+      {flag && !inPlan && <span style={{ width: 5, height: 5, borderRadius: 99, background: flagCol }} />}
       <span>{inPlan ? "✓ " : ""}{ex.name}</span>
       <span className="font-mono" style={{ fontSize: 10.5, color: C.faint }}>{cr}/set</span>
     </button>
@@ -955,9 +1005,11 @@ function AddChip({ ex, inPlan, muscleKey, onAdd, flag }) {
    LOG VIEW
    ============================================================ */
 function LogView({ draft, state, recent, onDate, onLoc, onEditSet, onAddSet, onRemoveSet, onMove, onOpenPicker, onRemoveEx, onSave, onClear }) {
-  const collideKeys = [...new Set(draft.exercises.flatMap((ex) => Object.keys(EX_BY_ID[ex.exId].credits)).filter((mk) => recent.has(mk)))];
+  const draftMuscleKeys = [...new Set(draft.exercises.flatMap((ex) => Object.keys(EX_BY_ID[ex.exId].credits)))];
+  const collideKeys = draftMuscleKeys.filter((mk) => recent.get(mk)?.level === "isolation");
+  const synergistKeys = draftMuscleKeys.filter((mk) => recent.get(mk)?.level === "synergist");
   const collideNames = collideKeys.map((k) => M_BY_KEY[k].name);
-  const lastWorked = collideKeys.map((k) => recent.get(k)).sort().pop();
+  const lastWorked = collideKeys.map((k) => recent.get(k).date).sort().pop();
 
   return (
     <div style={{ padding: "14px 16px" }}>
@@ -979,6 +1031,11 @@ function LogView({ draft, state, recent, onDate, onLoc, onEditSet, onAddSet, onR
       {collideNames.length > 0 && (
         <div className="rounded-xl" style={{ border: `1px solid ${C.amber}`, padding: "10px 12px", marginBottom: 14, fontSize: 12.5, color: C.amber, lineHeight: 1.5 }}>
           ⚠ {collideNames.join(", ")} worked {lastWorked ? prettyDate(lastWorked) : "recently"} (within 24h). If that was heavy, don't go heavy again here — moderate-after-moderate is fine.
+        </div>
+      )}
+      {synergistKeys.length > 0 && (
+        <div className="rounded-xl" style={{ border: `1px solid ${C.border}`, padding: "10px 12px", marginBottom: 14, fontSize: 12.5, color: C.blue, lineHeight: 1.5 }}>
+          {synergistKeys.map((k) => `${M_BY_KEY[k].name} worked as a synergist yesterday — fine to train directly.`).join(" ")}
         </div>
       )}
 
@@ -1341,7 +1398,16 @@ function TrendsView({ sessions, deloadWeeks }) {
    Exercise picker sheet
    ============================================================ */
 function ExercisePicker({ muscleKey, location, draft, recent, onAdd, onClose }) {
-  const rset = recent || new Set();
+  const rset = recent || new Map();
+  const flagOf = (e) => {
+    let lvl = null;
+    for (const mk of Object.keys(e.credits)) {
+      const r = rset.get && rset.get(mk);
+      if (r && r.level === "isolation") return "isolation";
+      if (r) lvl = "synergist";
+    }
+    return lvl;
+  };
   const list = exForLoc(location, draft.locStrict).filter((e) => muscleKey === "all" ? true : (e.credits[muscleKey] || 0) > 0);
   return (
     <div className="fixed inset-0 z-40 flex items-end" style={{ background: "rgba(0,0,0,.55)" }} onClick={onClose}>
@@ -1353,12 +1419,12 @@ function ExercisePicker({ muscleKey, location, draft, recent, onAdd, onClose }) 
         <div style={{ padding: "8px 14px 20px" }}>
           {list.map((e) => {
             const inPlan = draft.exercises.find((x) => x.exId === e.id);
-            const flag = Object.keys(e.credits).some((mk) => rset.has(mk));
+            const flag = flagOf(e);
             return (
-              <button key={e.id} onClick={() => onAdd(e.id)} className="w-full rounded-xl flex items-center justify-between" style={{ background: inPlan ? C.greenDim : C.surface2, border: `1px solid ${inPlan ? C.green : flag ? C.amber : C.border}`, padding: "11px 13px", marginBottom: 8, textAlign: "left" }}>
+              <button key={e.id} onClick={() => onAdd(e.id)} className="w-full rounded-xl flex items-center justify-between" style={{ background: inPlan ? C.greenDim : C.surface2, border: `1px solid ${inPlan ? C.green : flag === "isolation" ? C.amber : C.border}`, padding: "11px 13px", marginBottom: 8, textAlign: "left" }}>
                 <div>
                   <div className="flex items-center" style={{ gap: 6 }}>
-                    {flag && !inPlan && <span title="hits a muscle worked within 24h" style={{ width: 6, height: 6, borderRadius: 99, background: C.amber, flexShrink: 0 }} />}
+                    {flag && !inPlan && <span title={flag === "synergist" ? "synergist work yesterday — fine to train directly" : "hits a muscle worked within 24h"} style={{ width: 6, height: 6, borderRadius: 99, background: flag === "synergist" ? C.blue : C.amber, flexShrink: 0 }} />}
                     <span style={{ fontSize: 14, fontWeight: 600, color: C.text }}>{e.name}</span>
                     {e.maint && <span style={{ fontSize: 11, color: C.amber }}>⚙</span>}
                     {inPlan && <span style={{ fontSize: 11, color: C.green }}>· in session</span>}
@@ -1503,17 +1569,18 @@ function LocToggle({ value, onChange, small, strict }) {
     </div>
   );
 }
-// Muscle credit tags with an amber dot on any muscle worked within 24h.
+// Muscle credit tags: amber dot on isolation-level recency, blue dot on synergist-level.
 function MuscleTags({ credits, recent }) {
-  const r = recent || new Set();
+  const r = recent || new Map();
   const entries = Object.entries(credits);
   return (
     <span style={{ fontSize: 11, color: C.faint }}>
       {entries.map(([k, c], i) => {
-        const hot = r.has(k);
+        const lv = r.has(k) ? ((r.get && r.get(k) && r.get(k).level) || "isolation") : null;
+        const col = lv === "synergist" ? C.blue : lv === "isolation" ? C.amber : C.faint;
         return (
-          <span key={k} style={{ color: hot ? C.amber : C.faint }}>
-            {hot ? "● " : ""}{M_BY_KEY[k].name} {c}{i < entries.length - 1 ? "  ·  " : ""}
+          <span key={k} style={{ color: col }}>
+            {lv ? "● " : ""}{M_BY_KEY[k].name} {c}{i < entries.length - 1 ? "  ·  " : ""}
           </span>
         );
       })}

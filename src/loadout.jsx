@@ -446,11 +446,12 @@ export default function App() {
     return Math.max(1, Math.min(n, cap));
   };
 
-  // Default rows: first set = highest-weight PB with one extra rep; the rest use working weight / last reps.
+  // Default rows: first set = highest-weight PB with one extra rep (working weight / last reps if no PB);
+  // later sets keep the weight but leave reps blank to fill in as you go.
   const defaultSetRows = (exId, n) => {
     const meta = EX_BY_ID[exId];
     const w = state.working[exId] ?? meta.w, r = state.lastReps[exId] ?? 10;
-    const rows = Array.from({ length: n }, () => ({ weight: w, reps: r }));
+    const rows = Array.from({ length: n }, (_, i) => ({ weight: w, reps: i === 0 ? r : "" }));
     const pb = state.pbs[exId];
     if (rows.length && pb && pb.maxW >= 0 && pb.byW[pb.maxW] != null) {
       rows[0] = { weight: pb.maxW, reps: (Number(pb.byW[pb.maxW]) || 0) + 1 };

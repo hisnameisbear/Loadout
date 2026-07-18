@@ -430,6 +430,34 @@ export default function App() {
     return t;
   };
 
+  // Default set count when adding: 3, unless 2 or 4 sets lands the primary muscle exactly on MEV/target.
+  const defaultSetsFor = (exId, muscleKey) => {
+    const meta = EX_BY_ID[exId];
+    const cap = meta.capSets || 99;
+    const mk = muscleKey || Object.keys(meta.credits).sort((a, b) => meta.credits[b] - meta.credits[a])[0];
+    const c = meta.credits[mk] || 0;
+    if (!c) return Math.min(3, cap);
+    const planned = draftTotalsPlanned();
+    const cur = (totals[mk] || 0) + (planned[mk] || 0);
+    const m = M_BY_KEY[mk];
+    const T = cur < m.mev * factor ? m.mev * factor : m.target * factor;
+    const needed = Math.ceil((T - cur) / c - 1e-9);
+    const n = needed === 2 || needed === 4 ? needed : 3;
+    return Math.max(1, Math.min(n, cap));
+  };
+
+  // Default rows: first set = highest-weight PB with one extra rep; the rest use working weight / last reps.
+  const defaultSetRows = (exId, n) => {
+    const meta = EX_BY_ID[exId];
+    const w = state.working[exId] ?? meta.w, r = state.lastReps[exId] ?? 10;
+    const rows = Array.from({ length: n }, () => ({ weight: w, reps: r }));
+    const pb = state.pbs[exId];
+    if (rows.length && pb && pb.maxW >= 0 && pb.byW[pb.maxW] != null) {
+      rows[0] = { weight: pb.maxW, reps: (Number(pb.byW[pb.maxW]) || 0) + 1 };
+    }
+    return rows;
+  };
+
   // Set an exercise to N sets. Adds it if not present, resizes if it is, removes at 0.
   const setExerciseSets = (exId, count) => {
     const meta = EX_BY_ID[exId];
@@ -441,7 +469,7 @@ export default function App() {
       if (n === 0) return { ...base, exercises: base.exercises.filter((e) => e.exId !== exId) };
       const w = state.working[exId] ?? meta.w, r = state.lastReps[exId] ?? 10;
       if (!exists) {
-        return { ...base, exercises: [...base.exercises, { exId, sets: Array.from({ length: n }, () => ({ weight: w, reps: r })) }] };
+        return { ...base, exercises: [...base.exercises, { exId, sets: defaultSetRows(exId, n) }] };
       }
       return {
         ...base,
@@ -455,15 +483,23 @@ export default function App() {
     });
   };
 
-  // Toggle an exercise in/out of the draft (used by the picker). Adds 3 sets, or removes.
-  const toggleExerciseInDraft = (exId) => {
-    const meta = EX_BY_ID[exId];
-    const n = Math.min(3, meta.capSets || 99);
+  // Toggle an exercise in/out of the draft (used by the picker).
+  const toggleExerciseInDraft = (exId, muscleKey) => {
+    const n = defaultSetsFor(exId, muscleKey);
     setDraft((d) => {
       const base = d || newDraft();
       if (base.exercises.some((e) => e.exId === exId)) return { ...base, exercises: base.exercises.filter((e) => e.exId !== exId) };
-      const w = state.working[exId] ?? meta.w, r = state.lastReps[exId] ?? 10;
-      return { ...base, exercises: [...base.exercises, { exId, sets: Array.from({ length: n }, () => ({ weight: w, reps: r })) }] };
+      return { ...base, exercises: [...base.exercises, { exId, sets: defaultSetRows(exId, n) }] };
+    });
+  };
+
+  // Move an exercise card from one position to another (drag reorder).
+  const moveExercise = (from, to) => {
+    setDraft((d) => {
+      const arr = [...d.exercises];
+      const [x] = arr.splice(from, 1);
+      arr.splice(to, 0, x);
+      return { ...d, exercises: arr };
     });
   };
 
@@ -477,11 +513,7 @@ export default function App() {
     }
     setDraft((d) => {
       const base = d || newDraft();
-      const exs = plan.map((p) => {
-        const w = state.working[p.exId] ?? EX_BY_ID[p.exId].w;
-        const r = state.lastReps[p.exId] ?? 10;
-        return { exId: p.exId, sets: Array.from({ length: p.sets }, () => ({ weight: w, reps: r })) };
-      });
+      const exs = plan.map((p) => ({ exId: p.exId, sets: defaultSetRows(p.exId, p.sets) }));
       return { ...base, exercises: exs };
     });
     if (uncoverable.length) {
@@ -677,6 +709,8 @@ export default function App() {
             onSuggest={runSuggest}
             onOpenPicker={(mk) => setPicker(mk)}
             onSetSets={setExerciseSets}
+            defaultSetsFor={defaultSetsFor}
+            onMove={moveExercise}
             onClear={() => setDraft(newDraft(draft.location))}
             onLog={() => setTab("log")}
           />
@@ -690,6 +724,7 @@ export default function App() {
             onDate={(date) => setDraft((d) => ({ ...d, date }))}
             onLoc={(loc) => setDraft((d) => (loc === d.location ? { ...d, locStrict: !d.locStrict } : { ...d, location: loc, locStrict: false }))}
             onEditSet={editSet} onAddSet={addSetRow} onRemoveSet={removeSetRow}
+            onMove={moveExercise}
             onOpenPicker={() => setPicker("all")}
             onRemoveEx={(exId) => setDraft((d) => ({ ...d, exercises: d.exercises.filter((e) => e.exId !== exId) }))}
             onSave={saveSession}
@@ -708,7 +743,7 @@ export default function App() {
         <ExercisePicker
           muscleKey={picker} location={draft.location} draft={draft}
           recent={recentMuscles(state.sessions, draft.date)}
-          onAdd={(exId) => { toggleExerciseInDraft(exId); }}
+          onAdd={(exId) => { toggleExerciseInDraft(exId, picker !== "all" ? picker : undefined); }}
           onClose={() => setPicker(null)}
         />
       )}
@@ -763,7 +798,7 @@ export default function App() {
 /* ============================================================
    PLAN VIEW
    ============================================================ */
-function PlanView({ draft, totals, factor, state, planned, recent, onLoc, onSuggest, onOpenPicker, onSetSets, onClear, onLog }) {
+function PlanView({ draft, totals, factor, state, planned, recent, onLoc, onSuggest, onOpenPicker, onSetSets, defaultSetsFor, onMove, onClear, onLog }) {
   const [mode, setMode] = useState("muscle"); // 'muscle' | 'exercise'
   const [expanded, setExpanded] = useState(null);
   const exFlag = (e) => Object.keys(e.credits).some((mk) => recent.has(mk));
@@ -825,7 +860,7 @@ function PlanView({ draft, totals, factor, state, planned, recent, onLoc, onSugg
                       .sort((a, b) => (b.credits[m.key] || 0) - (a.credits[m.key] || 0) || exTotal(b) - exTotal(a))
                       .map((e) => (
                         <AddChip key={e.id} ex={e} inPlan={setsOf(e.id) > 0} muscleKey={m.key} flag={exFlag(e)}
-                          onAdd={() => onSetSets(e.id, setsOf(e.id) > 0 ? setsOf(e.id) + 1 : 3)} />
+                          onAdd={() => onSetSets(e.id, setsOf(e.id) > 0 ? setsOf(e.id) + 1 : defaultSetsFor(e.id, m.key))} />
                       ))}
                     {locExercises.filter((e) => (e.credits[m.key] || 0) > 0).length === 0 && (
                       <span style={{ fontSize: 12, color: C.faint, padding: "2px 0" }}>No {draft.locStrict && draft.location === "gym" ? "gym-only" : draft.location} exercise hits this.</span>
@@ -865,21 +900,30 @@ function PlanView({ draft, totals, factor, state, planned, recent, onLoc, onSugg
       {draft.exercises.length > 0 && (
         <>
           <div style={{ fontSize: 11, letterSpacing: 1.2, color: C.faint, textTransform: "uppercase", marginBottom: 8 }}>In this session · {draft.exercises.length}</div>
-          {draft.exercises.map((ex) => {
-            const meta = EX_BY_ID[ex.exId];
-            return (
-              <div key={ex.exId} className="rounded-xl flex items-center justify-between" style={{ background: C.surface, border: `1px solid ${C.border}`, padding: "10px 12px", marginBottom: 8 }}>
-                <div style={{ minWidth: 0 }}>
-                  <div className="flex items-center" style={{ gap: 6 }}>
-                    <span style={{ fontSize: 14, fontWeight: 600 }}>{meta.name}</span>
-                    {meta.maint && <span title="maintenance only" style={{ fontSize: 12, color: C.amber }}>⚙</span>}
-                  </div>
-                  <div style={{ marginTop: 2 }}><MuscleTags credits={meta.credits} recent={recent} /></div>
-                </div>
-                <Stepper value={ex.sets.length} onChange={(v) => onSetSets(ex.exId, v)} step={1} min={0} width={42} />
-              </div>
-            );
-          })}
+          <ReorderList count={draft.exercises.length} onMove={onMove} gap={8}>
+            {({ setRef, begin, itemStyle }) => (
+              <>
+                {draft.exercises.map((ex, i) => {
+                  const meta = EX_BY_ID[ex.exId];
+                  return (
+                    <div key={ex.exId} ref={setRef(i)} className="rounded-xl flex items-center justify-between" style={{ background: C.surface, border: `1px solid ${C.border}`, padding: "10px 12px", marginBottom: 8, ...itemStyle(i) }}>
+                      <div className="flex items-center" style={{ minWidth: 0 }}>
+                        <DragHandle onPointerDown={begin(i)} />
+                        <div style={{ minWidth: 0 }}>
+                          <div className="flex items-center" style={{ gap: 6 }}>
+                            <span style={{ fontSize: 14, fontWeight: 600 }}>{meta.name}</span>
+                            {meta.maint && <span title="maintenance only" style={{ fontSize: 12, color: C.amber }}>⚙</span>}
+                          </div>
+                          <div style={{ marginTop: 2 }}><MuscleTags credits={meta.credits} recent={recent} /></div>
+                        </div>
+                      </div>
+                      <Stepper value={ex.sets.length} onChange={(v) => onSetSets(ex.exId, v)} step={1} min={0} width={42} />
+                    </div>
+                  );
+                })}
+              </>
+            )}
+          </ReorderList>
         </>
       )}
       {draft.exercises.length === 0 && (
@@ -909,7 +953,7 @@ function AddChip({ ex, inPlan, muscleKey, onAdd, flag }) {
 /* ============================================================
    LOG VIEW
    ============================================================ */
-function LogView({ draft, state, recent, onDate, onLoc, onEditSet, onAddSet, onRemoveSet, onOpenPicker, onRemoveEx, onSave, onClear }) {
+function LogView({ draft, state, recent, onDate, onLoc, onEditSet, onAddSet, onRemoveSet, onMove, onOpenPicker, onRemoveEx, onSave, onClear }) {
   const collideKeys = [...new Set(draft.exercises.flatMap((ex) => Object.keys(EX_BY_ID[ex.exId].credits)).filter((mk) => recent.has(mk)))];
   const collideNames = collideKeys.map((k) => M_BY_KEY[k].name);
   const lastWorked = collideKeys.map((k) => recent.get(k)).sort().pop();
@@ -943,19 +987,25 @@ function LogView({ draft, state, recent, onDate, onLoc, onEditSet, onAddSet, onR
           No exercises yet. Add what you did below.
         </div>
       )}
-      {draft.exercises.map((ex) => {
+      <ReorderList count={draft.exercises.length} onMove={onMove} gap={12}>
+        {({ setRef, begin, itemStyle }) => (
+          <>
+      {draft.exercises.map((ex, exIdx) => {
         const meta = EX_BY_ID[ex.exId];
         const isLoad = meta.unit !== "db";
         const oneSet = ex.sets.length === 1;
         return (
-          <div key={ex.exId} className="rounded-2xl" style={{ background: C.surface, border: `1px solid ${C.border}`, padding: "12px 12px 10px", marginBottom: 12 }}>
+          <div key={ex.exId} ref={setRef(exIdx)} className="rounded-2xl" style={{ background: C.surface, border: `1px solid ${C.border}`, padding: "12px 12px 10px", marginBottom: 12, ...itemStyle(exIdx) }}>
             <div className="flex items-start justify-between" style={{ marginBottom: 8 }}>
-              <div style={{ minWidth: 0 }}>
-                <div className="flex items-center" style={{ gap: 6 }}>
-                  <span style={{ fontSize: 15, fontWeight: 600 }}>{meta.name}</span>
-                  {meta.maint && <span title="maintenance only — don't chase load" style={{ fontSize: 12, color: C.amber }}>⚙</span>}
+              <div className="flex items-center" style={{ minWidth: 0 }}>
+                <DragHandle onPointerDown={begin(exIdx)} />
+                <div style={{ minWidth: 0 }}>
+                  <div className="flex items-center" style={{ gap: 6 }}>
+                    <span style={{ fontSize: 15, fontWeight: 600 }}>{meta.name}</span>
+                    {meta.maint && <span title="maintenance only — don't chase load" style={{ fontSize: 12, color: C.amber }}>⚙</span>}
+                  </div>
+                  <div style={{ marginTop: 2 }}><MuscleTags credits={meta.credits} recent={recent} /></div>
                 </div>
-                <div style={{ marginTop: 2 }}><MuscleTags credits={meta.credits} recent={recent} /></div>
               </div>
               <button onClick={() => onRemoveEx(ex.exId)} style={{ color: C.faint, fontSize: 16, padding: 4 }} aria-label="remove">🗑</button>
             </div>
@@ -996,6 +1046,9 @@ function LogView({ draft, state, recent, onDate, onLoc, onEditSet, onAddSet, onR
           </div>
         );
       })}
+          </>
+        )}
+      </ReorderList>
 
       <button onClick={onOpenPicker} className="w-full rounded-xl font-semibold" style={{ background: C.surface2, color: C.text, border: `1px solid ${C.borderLite}`, padding: "12px 0", fontSize: 14, marginBottom: 14 }}>+ Add exercise</button>
 
@@ -1376,6 +1429,60 @@ function SettingsSheet({ state, blockWeek, week, isDeloadWeek, onClose, onToggle
 /* ============================================================
    Shared bits
    ============================================================ */
+// Press the ⠿ handle and drag to reorder. Pointer-based so it works with touch;
+// the handle sets touch-action:none so dragging doesn't fight page scroll.
+function ReorderList({ count, onMove, gap, children }) {
+  const refs = useRef([]);
+  const dragRef = useRef(null);
+  const [drag, setDrag] = useState(null);
+  const begin = (idx) => (e) => {
+    if (count < 2) return;
+    e.preventDefault();
+    const rects = refs.current.slice(0, count).map((el) => el.getBoundingClientRect());
+    const y0 = e.clientY;
+    const move = (ev) => {
+      const dy = ev.clientY - y0;
+      const cy = rects[idx].top + rects[idx].height / 2 + dy;
+      let t = idx;
+      for (let j = 0; j < count; j++) {
+        if (j === idx) continue;
+        const mid = rects[j].top + rects[j].height / 2;
+        if (j < idx && cy < mid) t = Math.min(t, j);
+        if (j > idx && cy > mid) t = Math.max(t, j);
+      }
+      dragRef.current = { idx, dy, target: t, h: rects[idx].height + gap };
+      setDrag(dragRef.current);
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+      const d = dragRef.current;
+      dragRef.current = null;
+      setDrag(null);
+      if (d && d.target !== d.idx) onMove(d.idx, d.target);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+    dragRef.current = { idx, dy: 0, target: idx, h: rects[idx].height + gap };
+    setDrag(dragRef.current);
+  };
+  const itemStyle = (i) => {
+    if (!drag) return {};
+    if (i === drag.idx) return { transform: `translateY(${drag.dy}px)`, zIndex: 5, position: "relative", boxShadow: "0 6px 20px rgba(0,0,0,.45)" };
+    if (drag.target <= i && i < drag.idx) return { transform: `translateY(${drag.h}px)`, transition: "transform .15s ease" };
+    if (drag.idx < i && i <= drag.target) return { transform: `translateY(-${drag.h}px)`, transition: "transform .15s ease" };
+    return { transition: "transform .15s ease" };
+  };
+  return children({ setRef: (i) => (el) => { refs.current[i] = el; }, begin, itemStyle });
+}
+function DragHandle({ onPointerDown }) {
+  return (
+    <span onPointerDown={onPointerDown} aria-label="drag to reorder"
+      style={{ touchAction: "none", cursor: "grab", color: C.faint, fontSize: 15, padding: "4px 8px 4px 0", userSelect: "none", flexShrink: 0 }}>⠿</span>
+  );
+}
 function LocToggle({ value, onChange, small, strict }) {
   const opts = [["home", "Home"], ["outdoor", "Outdoor"], ["gym", "Gym"]];
   return (

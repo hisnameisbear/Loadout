@@ -360,7 +360,7 @@ function MuscleBar({ name, val, mev, target, planned = 0, compact = false, flag 
   return (
     <div className="flex items-center" style={{ gap: 10, padding: compact ? "5px 0" : "7px 0", cursor: onClick ? "pointer" : "default" }} onClick={onClick}>
       <div className="flex items-center" style={{ width: 84, flexShrink: 0, gap: 5 }}>
-        {flag && <span title={flag === "synergist" ? "synergist work yesterday — fine to train directly" : "worked within 24h"} style={{ width: 6, height: 6, borderRadius: 99, background: flag === "synergist" ? C.blue : C.amber, flexShrink: 0 }} />}
+        {flag && <span title={flag === "synergist" ? "synergist work yesterday — fine to train directly" : "worked within 24h"} style={{ width: 6, height: 6, borderRadius: 99, background: flag === "synergist" ? C.violet : C.amber, flexShrink: 0 }} />}
         <span style={{ color: t === "neutral" ? C.faint : C.text, fontSize: 13 }}>{name}</span>
       </div>
       <div className="relative flex-1 rounded-full overflow-hidden" style={{ height: 8, background: C.surface3 }}>
@@ -863,7 +863,7 @@ function PlanView({ draft, totals, factor, state, planned, recent, onLoc, onSugg
         </div>
       )}
       {synergistKeys.length > 0 && (
-        <div className="rounded-xl" style={{ border: `1px solid ${C.border}`, padding: "10px 12px", marginBottom: 12, fontSize: 12.5, color: C.blue, lineHeight: 1.5 }}>
+        <div className="rounded-xl" style={{ border: `1px solid ${C.border}`, padding: "10px 12px", marginBottom: 12, fontSize: 12.5, color: C.violet, lineHeight: 1.5 }}>
           {synergistKeys.map((k) => `${M_BY_KEY[k].name} worked as a synergist yesterday — fine to train directly.`).join(" ")}
         </div>
       )}
@@ -874,7 +874,7 @@ function PlanView({ draft, totals, factor, state, planned, recent, onLoc, onSugg
           <span style={{ fontSize: 11, letterSpacing: 1.2, color: C.faint, textTransform: "uppercase" }}>Coverage if logged · week total</span>
           <span>
             {[...recent.values()].some((r) => r.level === "isolation") && <span style={{ fontSize: 10, color: C.amber }}>● worked &lt;24h</span>}
-            {[...recent.values()].some((r) => r.level === "synergist") && <span style={{ fontSize: 10, color: C.blue, marginLeft: 6 }}>● synergist</span>}
+            {[...recent.values()].some((r) => r.level === "synergist") && <span style={{ fontSize: 10, color: C.violet, marginLeft: 6 }}>● synergist</span>}
           </span>
         </div>
         {MUSCLES.map((m) => (
@@ -898,7 +898,7 @@ function PlanView({ draft, totals, factor, state, planned, recent, onLoc, onSugg
               <div key={m.key} style={{ borderBottom: `1px solid ${C.border}` }}>
                 <div onClick={() => setExpanded(open ? null : m.key)} className="flex items-center justify-between" style={{ cursor: "pointer", padding: "10px 0" }}>
                   <div className="flex items-center" style={{ gap: 6 }}>
-                    {recent.has(m.key) && <span title={recent.get(m.key).level === "synergist" ? "synergist work yesterday — fine to train directly" : "worked within 24h"} style={{ width: 6, height: 6, borderRadius: 99, background: recent.get(m.key).level === "synergist" ? C.blue : C.amber }} />}
+                    {recent.has(m.key) && <span title={recent.get(m.key).level === "synergist" ? "synergist work yesterday — fine to train directly" : "worked within 24h"} style={{ width: 6, height: 6, borderRadius: 99, background: recent.get(m.key).level === "synergist" ? C.violet : C.amber }} />}
                     <span style={{ fontSize: 14, fontWeight: 500 }}>{m.name}</span>
                     <span className="font-mono" style={{ fontSize: 11, color: tierColor(tierOf(cur, m.mev * factor, m.target * factor)) }}>{Number.isInteger(cur) ? cur : cur.toFixed(1)}/{m.mev * factor}</span>
                   </div>
@@ -932,7 +932,7 @@ function PlanView({ draft, totals, factor, state, planned, recent, onLoc, onSugg
               <div key={e.id} className="flex items-center justify-between" style={{ padding: "8px 0", borderBottom: `1px solid ${C.border}` }}>
                 <div style={{ minWidth: 0, paddingRight: 8 }}>
                   <div className="flex items-center" style={{ gap: 6 }}>
-                    {exFlag(e) && <span title={exFlag(e) === "synergist" ? "synergist work yesterday — fine to train directly" : "hits a muscle worked within 24h"} style={{ width: 6, height: 6, borderRadius: 99, background: exFlag(e) === "synergist" ? C.blue : C.amber, flexShrink: 0 }} />}
+                    {exFlag(e) && <span title={exFlag(e) === "synergist" ? "synergist work yesterday — fine to train directly" : "hits a muscle worked within 24h"} style={{ width: 6, height: 6, borderRadius: 99, background: exFlag(e) === "synergist" ? C.violet : C.amber, flexShrink: 0 }} />}
                     <span style={{ fontSize: 14, fontWeight: 600, color: n > 0 ? C.green : C.text }}>{e.name}</span>
                     {e.maint && <span title="maintenance only" style={{ fontSize: 12, color: C.amber }}>⚙</span>}
                   </div>
@@ -991,7 +991,7 @@ function PlanView({ draft, totals, factor, state, planned, recent, onLoc, onSugg
 }
 function AddChip({ ex, inPlan, muscleKey, onAdd, flag }) {
   const cr = ex.credits[muscleKey];
-  const flagCol = flag === "synergist" ? C.blue : C.amber;
+  const flagCol = flag === "synergist" ? C.violet : C.amber;
   return (
     <button onClick={onAdd} className="rounded-lg flex items-center" style={{ gap: 5, padding: "7px 10px", fontSize: 12.5, background: inPlan ? C.greenDim : C.surface2, border: `1px solid ${inPlan ? C.green : flag === "isolation" ? C.amber : C.borderLite}`, color: inPlan ? C.green : C.text }}>
       {flag && !inPlan && <span style={{ width: 5, height: 5, borderRadius: 99, background: flagCol }} />}
@@ -1034,7 +1034,7 @@ function LogView({ draft, state, recent, onDate, onLoc, onEditSet, onAddSet, onR
         </div>
       )}
       {synergistKeys.length > 0 && (
-        <div className="rounded-xl" style={{ border: `1px solid ${C.border}`, padding: "10px 12px", marginBottom: 14, fontSize: 12.5, color: C.blue, lineHeight: 1.5 }}>
+        <div className="rounded-xl" style={{ border: `1px solid ${C.border}`, padding: "10px 12px", marginBottom: 14, fontSize: 12.5, color: C.violet, lineHeight: 1.5 }}>
           {synergistKeys.map((k) => `${M_BY_KEY[k].name} worked as a synergist yesterday — fine to train directly.`).join(" ")}
         </div>
       )}
@@ -1424,7 +1424,7 @@ function ExercisePicker({ muscleKey, location, draft, recent, onAdd, onClose }) 
               <button key={e.id} onClick={() => onAdd(e.id)} className="w-full rounded-xl flex items-center justify-between" style={{ background: inPlan ? C.greenDim : C.surface2, border: `1px solid ${inPlan ? C.green : flag === "isolation" ? C.amber : C.border}`, padding: "11px 13px", marginBottom: 8, textAlign: "left" }}>
                 <div>
                   <div className="flex items-center" style={{ gap: 6 }}>
-                    {flag && !inPlan && <span title={flag === "synergist" ? "synergist work yesterday — fine to train directly" : "hits a muscle worked within 24h"} style={{ width: 6, height: 6, borderRadius: 99, background: flag === "synergist" ? C.blue : C.amber, flexShrink: 0 }} />}
+                    {flag && !inPlan && <span title={flag === "synergist" ? "synergist work yesterday — fine to train directly" : "hits a muscle worked within 24h"} style={{ width: 6, height: 6, borderRadius: 99, background: flag === "synergist" ? C.violet : C.amber, flexShrink: 0 }} />}
                     <span style={{ fontSize: 14, fontWeight: 600, color: C.text }}>{e.name}</span>
                     {e.maint && <span style={{ fontSize: 11, color: C.amber }}>⚙</span>}
                     {inPlan && <span style={{ fontSize: 11, color: C.green }}>· in session</span>}
@@ -1577,7 +1577,7 @@ function MuscleTags({ credits, recent }) {
     <span style={{ fontSize: 11, color: C.faint }}>
       {entries.map(([k, c], i) => {
         const lv = r.has(k) ? ((r.get && r.get(k) && r.get(k).level) || "isolation") : null;
-        const col = lv === "synergist" ? C.blue : lv === "isolation" ? C.amber : C.faint;
+        const col = lv === "synergist" ? C.violet : lv === "isolation" ? C.amber : C.faint;
         return (
           <span key={k} style={{ color: col }}>
             {lv ? "● " : ""}{M_BY_KEY[k].name} {c}{i < entries.length - 1 ? "  ·  " : ""}

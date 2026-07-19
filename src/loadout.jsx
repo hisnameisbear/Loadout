@@ -543,7 +543,8 @@ export default function App() {
     // Core never flags in the UI, but back-to-back core days still aren't suggested (unchanged).
     if (recentMuscles(state.sessions, ref).has("core")) exclude.add("core");
     const trendAvg = trendAverages(state.sessions, state.deloadWeeks, 4);
-    const { plan, uncoverable } = suggestPlan(totals, draft?.location || state.lastLocation, exclude, draft?.locStrict, trendAvg);
+    const weekT = weekTotals(state.sessions, startOfWeekISO(ref));
+    const { plan, uncoverable } = suggestPlan(weekT, draft?.location || state.lastLocation, exclude, draft?.locStrict, trendAvg);
     if (!plan.length) {
       setToast(uncoverable.length ? "Nothing left to fill at this location." : "Everything's already at MEV for the week.");
       return;
@@ -739,9 +740,13 @@ export default function App() {
         {/* ---------- PLAN ---------- */}
         {tab === "plan" && draft && (
           <PlanView
-            draft={draft} totals={totals} factor={factor} state={state}
+            draft={draft}
+            totals={weekTotals(state.sessions, startOfWeekISO(draft.date))}
+            factor={state.deloadWeeks.includes(startOfWeekISO(draft.date)) ? 0.5 : 1}
+            state={state}
             planned={draftTotalsPlanned()}
             recent={recentMuscleLevels(state.sessions, draft.date)}
+            onDate={(date) => setDraft((d) => ({ ...d, date }))}
             onLoc={(loc) => setDraft((d) => (loc === d.location ? { ...d, locStrict: !d.locStrict } : { ...d, location: loc, locStrict: false }))}
             onSuggest={runSuggest}
             onOpenPicker={(mk) => setPicker(mk)}
@@ -835,7 +840,7 @@ export default function App() {
 /* ============================================================
    PLAN VIEW
    ============================================================ */
-function PlanView({ draft, totals, factor, state, planned, recent, onLoc, onSuggest, onOpenPicker, onSetSets, defaultSetsFor, onMove, onClear, onLog }) {
+function PlanView({ draft, totals, factor, state, planned, recent, onDate, onLoc, onSuggest, onOpenPicker, onSetSets, defaultSetsFor, onMove, onClear, onLog }) {
   const [mode, setMode] = useState("muscle"); // 'muscle' | 'exercise'
   const [expanded, setExpanded] = useState(null);
   const exFlag = (e) => {
@@ -857,10 +862,21 @@ function PlanView({ draft, totals, factor, state, planned, recent, onLoc, onSugg
 
   return (
     <div style={{ padding: "14px 16px" }}>
-      <div className="flex items-center justify-between" style={{ marginBottom: 12 }}>
-        <LocToggle value={draft.location} onChange={onLoc} strict={draft.locStrict} />
-        <button onClick={onSuggest} className="rounded-lg font-semibold" style={{ background: C.surface2, color: C.blue, border: `1px solid ${C.blue}`, padding: "9px 14px", fontSize: 13 }}>✦ Suggest workout</button>
+      {/* date + location — same control as the Log tab; recency flags follow the selected day */}
+      <div className="rounded-2xl" style={{ background: C.surface, border: `1px solid ${C.border}`, padding: "10px 12px", marginBottom: 12 }}>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center" style={{ gap: 8 }}>
+            <button onClick={() => onDate(addDaysISO(draft.date, -1))} className="rounded-md" style={{ width: 32, height: 32, background: C.surface3, color: C.text, fontSize: 16 }}>‹</button>
+            <div style={{ minWidth: 116, textAlign: "center" }}>
+              <div style={{ fontSize: 14, fontWeight: 600 }}>{draft.date === todayISO() ? "Today" : prettyDate(draft.date)}</div>
+              <div className="font-mono" style={{ fontSize: 10.5, color: C.faint }}>{draft.date}</div>
+            </div>
+            <button onClick={() => onDate(addDaysISO(draft.date, 1))} className="rounded-md" style={{ width: 32, height: 32, background: C.surface3, color: C.text, fontSize: 16 }}>›</button>
+          </div>
+          <LocToggle value={draft.location} onChange={onLoc} small strict={draft.locStrict} />
+        </div>
       </div>
+      <button onClick={onSuggest} className="w-full rounded-lg font-semibold" style={{ background: C.surface2, color: C.blue, border: `1px solid ${C.blue}`, padding: "10px 0", fontSize: 13, marginBottom: 12 }}>✦ Suggest workout</button>
 
       {collideNames.length > 0 && (
         <div className="rounded-xl" style={{ border: `1px solid ${C.amber}`, padding: "10px 12px", marginBottom: 12, fontSize: 12.5, color: C.amber, lineHeight: 1.5 }}>

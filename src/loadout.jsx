@@ -536,7 +536,12 @@ export default function App() {
   };
 
   const runSuggest = () => {
-    const exclude = new Set(recentMuscles(state.sessions, draft?.date || todayISO()).keys());
+    const ref = draft?.date || todayISO();
+    // Skip only isolation-level recent work; synergist-level muscles are fine to train directly.
+    const levels = recentMuscleLevels(state.sessions, ref);
+    const exclude = new Set([...levels.entries()].filter(([, v]) => v.level === "isolation").map(([k]) => k));
+    // Core never flags in the UI, but back-to-back core days still aren't suggested (unchanged).
+    if (recentMuscles(state.sessions, ref).has("core")) exclude.add("core");
     const trendAvg = trendAverages(state.sessions, state.deloadWeeks, 4);
     const { plan, uncoverable } = suggestPlan(totals, draft?.location || state.lastLocation, exclude, draft?.locStrict, trendAvg);
     if (!plan.length) {

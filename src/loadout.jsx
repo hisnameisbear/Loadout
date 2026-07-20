@@ -78,6 +78,7 @@ const EXERCISES = [
   { id: "legpress", name: "Leg Press", loc: ["gym"], unit: "db", w: 50, credits: { quads: 1, glutes: 0.5 } },
   { id: "legext", name: "Leg Extension", loc: ["gym"], unit: "db", w: 35, credits: { quads: 1 } },
   { id: "tripushdown", name: "Tricep Pushdown", loc: ["gym"], unit: "db", w: 15, credits: { triceps: 1 } },
+  { id: "assisteddip", name: "Assisted Dips", loc: ["gym"], unit: "load", w: 0, credits: { chest: 1, triceps: 0.75, frontdelts: 0.5 }, note: "Log the assistance/counterweight as the load — less assistance = harder." },
   { id: "bbsquat", name: "Barbell Back Squat", loc: ["gym"], unit: "db", w: 60, credits: { quads: 1, glutes: 0.5 } },
   { id: "bbrdl", name: "Barbell RDL", loc: ["gym"], unit: "db", w: 60, credits: { hamstrings: 1, glutes: 1 } },
   { id: "bbbench", name: "Barbell Bench Press", loc: ["gym"], unit: "db", w: 50, credits: { chest: 1, triceps: 0.5, frontdelts: 0.5 } },

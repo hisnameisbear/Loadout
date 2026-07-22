@@ -1172,7 +1172,7 @@ function HistoryView({ sessions, deloadWeeks, onEdit, onDelete, onExport }) {
       </div>
 
       <div className="inline-flex rounded-lg" style={{ background: C.surface2, border: `1px solid ${C.border}`, padding: 2, marginBottom: 12, width: "100%" }}>
-        {[["weeks", "Weeks"], ["sessions", "Sessions"], ["trends", "Trends"]].map(([v, label]) => (
+        {[["weeks", "Weeks"], ["sessions", "Sessions"], ["trends", "Trends"], ["pbs", "PBs"]].map(([v, label]) => (
           <button key={v} onClick={() => { setView(v); setOpen(null); }} className="rounded-md font-medium" style={{ flex: 1, padding: "8px 0", fontSize: 13, background: view === v ? C.surface3 : "transparent", color: view === v ? C.text : C.faint }}>{label}</button>
         ))}
       </div>
@@ -1181,6 +1181,9 @@ function HistoryView({ sessions, deloadWeeks, onEdit, onDelete, onExport }) {
 
       {/* TRENDS */}
       {view === "trends" && <TrendsView sessions={sessions} deloadWeeks={deloadWeeks} />}
+
+      {/* PBS */}
+      {view === "pbs" && <PBView sessions={sessions} />}
 
       {/* WEEKS */}
       {view === "weeks" && weeks.map((w) => {
@@ -1411,6 +1414,152 @@ function TrendsView({ sessions, deloadWeeks }) {
           );
         })}
         <div style={{ fontSize: 10.5, color: C.faint, paddingTop: 8 }}>Worst first · bar height = sets vs target · thin line = MEV · trend line = 3-wk moving avg, <span style={{ color: C.green }}>rising</span>/<span style={{ color: C.red }}>falling</span> · current week dimmed, not counted · tap a row for numbers</div>
+      </div>
+    </>
+  );
+}
+
+/* ============================================================
+   PB VIEW — chronological replay of sessions through the existing
+   pbCheck/mergePB rules (read-only; state.pbs has no dates)
+   ============================================================ */
+function buildPbData(sessions) {
+  // Stable chronological order; sessions may share a date.
+  const sorted = [...sessions].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : String(a.id) < String(b.id) ? -1 : 1));
+  let pbs = {};
+  const events = [];      // {date, exId} — one per pbCheck hit, mirroring saveSession's per-set check
+  const lastRecord = {};  // exId -> date the currently-displayed record last improved
+  const series = {};      // exId -> [{date, w, r0}] running record after each session
+  const trainDates = {};  // exId -> [dates trained]
+  for (const s of sorted) {
+    const before = pbs;   // saveSession checks every set against the pre-session record
+    const touched = new Set();
+    for (const ex of s.exercises) {
+      const meta = EX_BY_ID[ex.exId];
+      if (!meta) continue;
+      touched.add(ex.exId);
+      for (const st of ex.sets) {
+        if (pbCheck(before, ex.exId, st.weight, st.reps)) events.push({ date: s.date, exId: ex.exId });
+        const prev = pbs[ex.exId];
+        pbs = mergePB(pbs, ex.exId, st.weight, st.reps);
+        const cur = pbs[ex.exId];
+        if (cur && (!prev || cur.maxW !== prev.maxW || cur.byW[cur.maxW] !== prev.byW[prev.maxW])) lastRecord[ex.exId] = s.date;
+      }
+    }
+    for (const exId of touched) {
+      (trainDates[exId] = trainDates[exId] || []).push(s.date);
+      const rec = pbs[exId];
+      if (rec) (series[exId] = series[exId] || []).push({ date: s.date, w: rec.maxW, r0: rec.byW[0] });
+    }
+  }
+  return { events, pbs, lastRecord, series, trainDates };
+}
+
+function PBMiniLine({ values, dates, unitLabel }) {
+  const W = 320, H = 84, pad = 10;
+  const min = Math.min(...values), max = Math.max(...values);
+  const span = max - min || 1;
+  const x = (i) => pad + (values.length > 1 ? (i / (values.length - 1)) * (W - pad * 2) : (W - pad * 2) / 2);
+  const y = (v) => H - pad - ((v - min) / span) * (H - pad * 2);
+  const path = values.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
+  const fmt = (n) => (Number.isInteger(n) ? n : n.toFixed(1));
+  return (
+    <div style={{ padding: "2px 0 10px" }}>
+      <div className="flex items-center justify-between" style={{ fontSize: 10, color: C.faint, marginBottom: 2 }}>
+        <span>{prettyDate(dates[0])} → {prettyDate(dates[dates.length - 1])}</span>
+        <span>{fmt(min)}–{fmt(max)} {unitLabel}</span>
+      </div>
+      <svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ display: "block", background: C.surface2, borderRadius: 8 }}>
+        <path d={path} fill="none" stroke={C.blue} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+        {values.map((v, i) => (
+          <circle key={i} cx={x(i)} cy={y(v)} r="2.5" fill={C.blue} />
+        ))}
+      </svg>
+    </div>
+  );
+}
+
+function PBView({ sessions }) {
+  const [openEx, setOpenEx] = useState(null);
+  const { events, pbs, lastRecord, series, trainDates } = useMemo(() => buildPbData(sessions), [sessions]);
+  const today = todayISO();
+  const curWeek = startOfWeekISO(today);
+
+  // 1. New PBs per training week (Sat–Fri), last 12 weeks incl. the early inflated ones.
+  const weeks = Array.from({ length: 12 }, (_, i) => addDaysISO(curWeek, -7 * (11 - i)));
+  const counts = weeks.map((wk) => events.filter((e) => startOfWeekISO(e.date) === wk).length);
+  const maxCount = Math.max(1, ...counts);
+
+  // 2/3. Exercise rows, most-recently-improved first; plateau = trained 2+ times in the
+  // last 4 weeks with no record improvement in that window.
+  const cutoff = addDaysISO(today, -28);
+  const rows = Object.keys(trainDates)
+    .filter((exId) => pbs[exId] && EX_BY_ID[exId])
+    .map((exId) => {
+      const rec = pbs[exId];
+      const meta = EX_BY_ID[exId];
+      const bestReps = rec.byW[rec.maxW];
+      const unitLabel = exId === "plank" ? "sec" : "reps";
+      const best = meta.unit === "db"
+        ? `${rec.maxW}kg × ${bestReps}`
+        : rec.maxW > 0 ? `${bestReps} ${unitLabel} +${rec.maxW}kg` : `${bestReps} ${unitLabel}`;
+      const recentSessions = trainDates[exId].filter((d) => d >= cutoff).length;
+      const plateau = (lastRecord[exId] || "") < cutoff && recentSessions >= 2;
+      return { exId, name: meta.name, best, date: lastRecord[exId], plateau, meta };
+    })
+    .sort((a, b) => ((a.date || "") < (b.date || "") ? 1 : -1));
+
+  const wkLabel = (iso) => { const d = parseISO(iso); return `${d.getDate()}/${d.getMonth() + 1}`; };
+
+  return (
+    <>
+      <div className="rounded-2xl" style={{ background: C.surface, border: `1px solid ${C.border}`, padding: "10px 14px 12px", marginBottom: 12 }}>
+        <div style={{ fontSize: 11, letterSpacing: 1.2, color: C.faint, textTransform: "uppercase", marginBottom: 8 }}>New PBs per week</div>
+        <div className="flex" style={{ gap: 4, alignItems: "flex-end", height: 72 }}>
+          {counts.map((c, i) => (
+            <div key={weeks[i]} className="flex flex-col items-center justify-end" style={{ flex: 1, height: "100%" }}>
+              <span className="font-mono" style={{ fontSize: 9, color: c ? C.text : C.faint, marginBottom: 2 }}>{c}</span>
+              <div style={{ width: "100%", height: Math.max(2, (c / maxCount) * 52), background: c ? C.green : C.surface3, borderRadius: 2 }} />
+            </div>
+          ))}
+        </div>
+        <div className="flex" style={{ gap: 4, marginTop: 3 }}>
+          {weeks.map((wk, i) => (
+            <span key={wk} style={{ flex: 1, textAlign: "center", fontSize: 8, color: C.faint }}>{i % 2 === 1 ? wkLabel(wk) : ""}</span>
+          ))}
+        </div>
+      </div>
+
+      <div className="rounded-2xl" style={{ background: C.surface, border: `1px solid ${C.border}`, padding: "10px 14px 8px" }}>
+        <div style={{ fontSize: 11, letterSpacing: 1.2, color: C.faint, textTransform: "uppercase", marginBottom: 4 }}>Current bests · latest first</div>
+        <div style={{ fontSize: 10.5, color: C.faint, lineHeight: 1.5, marginBottom: 4 }}>
+          <span style={{ color: C.amber }}>●</span> = trained 2+ times in the last 4 weeks without a new PB — might be time to nudge weight or reps.
+        </div>
+        {rows.map((r) => {
+          const isOpen = openEx === r.exId;
+          const pts = series[r.exId] || [];
+          const metricKg = pts.length && pts[pts.length - 1].w > 0 && r.meta.unit !== "bw";
+          const values = pts.map((p) => (metricKg ? p.w : (p.r0 ?? 0)));
+          const unitLabel = metricKg ? "kg" : r.exId === "plank" ? "sec" : "reps";
+          return (
+            <div key={r.exId} style={{ borderBottom: `1px solid ${C.border}` }}>
+              <div onClick={() => setOpenEx(isOpen ? null : r.exId)} className="flex items-center justify-between" style={{ padding: "9px 0", cursor: "pointer", gap: 8 }}>
+                <div className="flex items-center" style={{ gap: 6, minWidth: 0 }}>
+                  {r.plateau && <span title="trained 2+ times in the last 4 weeks, no new PB" style={{ width: 6, height: 6, borderRadius: 99, background: C.amber, flexShrink: 0 }} />}
+                  <span style={{ fontSize: 13.5, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.name}</span>
+                </div>
+                <div className="flex items-center" style={{ gap: 8, flexShrink: 0 }}>
+                  <span className="font-mono" style={{ fontSize: 12, color: C.green }}>{r.best}</span>
+                  <span style={{ fontSize: 10, color: C.faint }}>{r.date ? prettyDate(r.date) : "—"}</span>
+                  <span style={{ color: C.faint, fontSize: 12 }}>{isOpen ? "▾" : "▸"}</span>
+                </div>
+              </div>
+              {isOpen && pts.length > 0 && <PBMiniLine values={values} dates={pts.map((p) => p.date)} unitLabel={unitLabel} />}
+            </div>
+          );
+        })}
+        {rows.length === 0 && <div style={{ color: C.muted, fontSize: 13, textAlign: "center", padding: 16 }}>Nothing logged yet.</div>}
+        <div style={{ height: 8 }} />
       </div>
     </>
   );

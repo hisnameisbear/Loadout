@@ -26,6 +26,7 @@ const closeTag = "</script>\n";
 const end = html.lastIndexOf(closeTag, swAt);
 if (end < 0 || end < from) throw new Error("app script close tag not found");
 
-const out = html.slice(0, from) + "\n" + js + html.slice(end);
+const safeJs = js.replace(/<\/script>/g, "<\\/script>");
+const out = html.slice(0, from) + "\n" + safeJs + html.slice(end);
 writeFileSync("index.html", out);
 console.log(`index.html updated — bundle ${(js.length / 1024).toFixed(1)} kB`);

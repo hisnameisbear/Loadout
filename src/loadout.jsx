@@ -1438,8 +1438,9 @@ function buildPbData(sessions) {
       const meta = EX_BY_ID[ex.exId];
       if (!meta) continue;
       touched.add(ex.exId);
+      const firstTime = !trainDates[ex.exId]; // an exercise's first-ever session is a baseline, not a PB
       for (const st of ex.sets) {
-        if (pbCheck(before, ex.exId, st.weight, st.reps)) events.push({ date: s.date, exId: ex.exId });
+        if (!firstTime && pbCheck(before, ex.exId, st.weight, st.reps)) events.push({ date: s.date, exId: ex.exId });
         const prev = pbs[ex.exId];
         pbs = mergePB(pbs, ex.exId, st.weight, st.reps);
         const cur = pbs[ex.exId];

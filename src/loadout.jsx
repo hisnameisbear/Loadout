@@ -872,7 +872,7 @@ function PlanView({ draft, totals, factor, state, planned, recent, onDate, onLoc
       {/* date + location — same control as the Log tab; recency flags follow the selected day */}
       <div className="rounded-2xl" style={{ background: C.surface, border: `1px solid ${C.border}`, padding: "10px 12px", marginBottom: 12 }}>
         <div className="flex items-center justify-between" style={{ gap: 10, rowGap: 10, flexWrap: "wrap" }}>
-          <div className="flex items-center" style={{ gap: 8 }}>
+          <div className="flex items-center" style={{ gap: 8, width: "100%", justifyContent: "space-between" }}>
             <button onClick={() => onDate(addDaysISO(draft.date, -1))} className="rounded-md" style={{ width: 32, height: 32, background: C.surface3, color: C.text, fontSize: 16 }}>‹</button>
             <div style={{ minWidth: 116, textAlign: "center" }}>
               <div style={{ fontSize: 14, fontWeight: 600 }}>{draft.date === todayISO() ? "Today" : prettyDate(draft.date)}</div>
@@ -1044,7 +1044,7 @@ function LogView({ draft, state, recent, onDate, onLoc, onEditSet, onAddSet, onR
       {/* date + location */}
       <div className="rounded-2xl" style={{ background: C.surface, border: `1px solid ${C.border}`, padding: "10px 12px", marginBottom: 14 }}>
         <div className="flex items-center justify-between" style={{ marginBottom: 10, gap: 10, rowGap: 10, flexWrap: "wrap" }}>
-          <div className="flex items-center" style={{ gap: 8 }}>
+          <div className="flex items-center" style={{ gap: 8, width: "100%", justifyContent: "space-between" }}>
             <button onClick={() => onDate(addDaysISO(draft.date, -1))} className="rounded-md" style={{ width: 32, height: 32, background: C.surface3, color: C.text, fontSize: 16 }}>‹</button>
             <div style={{ minWidth: 116, textAlign: "center" }}>
               <div style={{ fontSize: 14, fontWeight: 600 }}>{draft.date === todayISO() ? "Today" : prettyDate(draft.date)}</div>
@@ -1731,14 +1731,14 @@ function DragHandle({ onPointerDown }) {
 function LocToggle({ value, onChange, small, strict }) {
   const opts = [["home", "Home"], ["outdoor", "Outdoor"], ["gym", "Gym"], ["bodyweight", "Bodyweight"]];
   return (
-    <div className="flex items-center" style={{ gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-      <div className="inline-flex rounded-lg" style={{ background: C.surface2, border: `1px solid ${C.border}`, padding: 2 }}>
+    <div className="flex items-center" style={{ gap: 6, rowGap: 6, width: "100%", flexWrap: "wrap" }}>
+      <div className="flex rounded-lg" style={{ background: C.surface2, border: `1px solid ${C.border}`, padding: 2, flex: "1 0 100%", minWidth: 0 }}>
         {opts.map(([v, label]) => {
           const active = value === v;
           // Bodyweight has no strict mode: repeat taps just reselect it.
           const strictActive = active && strict && v !== "bodyweight";
           return (
-            <button key={v} onClick={() => { if (v === "bodyweight" && active) return; onChange(v); }} className="rounded-md font-medium" style={{ padding: small ? "6px 8px" : "7px 10px", fontSize: small ? 12 : 12.5, background: active ? C.surface3 : "transparent", color: active ? C.text : C.faint, boxShadow: strictActive ? `inset 0 0 0 1.5px ${C.blue}` : "none" }}>{label}</button>
+            <button key={v} onClick={() => { if (v === "bodyweight" && active) return; onChange(v); }} className="rounded-md font-medium" style={{ flex: "1 1 auto", padding: small ? "6px 4px" : "7px 6px", whiteSpace: "nowrap", fontSize: small ? 12 : 12.5, background: active ? C.surface3 : "transparent", color: active ? C.text : C.faint, boxShadow: strictActive ? `inset 0 0 0 1.5px ${C.blue}` : "none" }}>{label}</button>
           );
         })}
       </div>

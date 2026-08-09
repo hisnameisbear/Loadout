@@ -37,19 +37,20 @@ const M_BY_KEY = Object.fromEntries(MUSCLES.map((m) => [m.key, m]));
 const EXERCISES = [
   { id: "floorpress", name: "DB Floor Press", loc: ["home"], unit: "db", w: 18, credits: { chest: 1, triceps: 0.5, frontdelts: 0.5 } },
   { id: "narrowfloorpress", name: "Narrow Floor Press", loc: ["home"], unit: "db", w: 16, credits: { chest: 1, triceps: 0.75, frontdelts: 0.5 }, note: "Close grip — triceps/elbow loader; watch the elbow signal." },
-  { id: "sofapress", name: "Sofa Incline Press-up", loc: ["home"], unit: "bw", w: 0, credits: { chest: 1, triceps: 0.5, frontdelts: 0.5 } },
-  { id: "narrowpressup", name: "Narrow Press-up", loc: ["home"], unit: "bw", w: 0, credits: { chest: 1, triceps: 0.75, frontdelts: 0.5 }, note: "Close grip — triceps/elbow loader; watch the elbow signal." },
+  { id: "sofapress", name: "Sofa Incline Press-up", loc: ["home"], unit: "bw", w: 0, bw: true, credits: { chest: 1, triceps: 0.5, frontdelts: 0.5 } },
+  { id: "narrowpressup", name: "Narrow Press-up", loc: ["home"], unit: "bw", w: 0, bw: true, credits: { chest: 1, triceps: 0.75, frontdelts: 0.5 }, note: "Close grip — triceps/elbow loader; watch the elbow signal." },
   { id: "widepressup", name: "Wide Press-up", loc: ["home", "outdoor", "gym"], unit: "bw", w: 0, credits: { chest: 1, triceps: 0.25, frontdelts: 0.5 }, note: "Wide hands bias the pecs; easy on the elbows, keep shoulders packed." },
   { id: "widepressupincline", name: "Wide Press-up (incline)", loc: ["home", "outdoor", "gym"], unit: "bw", w: 0, credits: { chest: 1, triceps: 0.25, frontdelts: 0.5 }, note: "Hands elevated — easier regression of the wide press-up, same chest bias." },
   { id: "floorflye", name: "DB Floor Flye", loc: ["home"], unit: "db", w: 9, credits: { chest: 1 }, note: "Lower to a deep stretch; the floor clips the very bottom of the ROM." },
-  { id: "inclinepushup", name: "Incline Push-up (bar)", loc: ["outdoor"], unit: "bw", w: 0, credits: { chest: 1, triceps: 0.5, frontdelts: 0.5 } },
+  { id: "inclinepushup", name: "Incline Push-up (bar)", loc: ["outdoor"], unit: "bw", w: 0, bw: true, credits: { chest: 1, triceps: 0.5, frontdelts: 0.5 } },
   { id: "rdl", name: "DB RDL", loc: ["home"], unit: "db", w: 16, capSets: 4, credits: { hamstrings: 1, glutes: 1 }, note: "Grip-capped (no straps). Max 4 sets — erector fatigue." },
+  { id: "slrdl", name: "Single-leg RDL", loc: ["home", "outdoor"], unit: "load", w: 0, bw: true, credits: { hamstrings: 0.75, glutes: 0.5 }, note: "Balance-limited — go slow, hinge from the hip." },
   { id: "gobletsquat", name: "Goblet Squat", loc: ["home"], unit: "db", w: 16, credits: { quads: 1, glutes: 0.5 } },
   { id: "frontsquat", name: "DB Front Squat", loc: ["home"], unit: "db", w: 10, credits: { quads: 1, glutes: 0.5 } },
   { id: "frontsquatalt", name: "DB Front Squat (single)", loc: ["home"], unit: "db", w: 9, credits: { quads: 1, glutes: 0.5, core: 0.25 } },
   { id: "sumosquat", name: "Sumo Squat", loc: ["home"], unit: "db", w: 16, credits: { quads: 1, glutes: 0.75 } },
-  { id: "bwsquat", name: "BW Squat", loc: ["home", "outdoor"], unit: "bw", w: 0, credits: { quads: 1, glutes: 0.5 } },
-  { id: "reverselunge", name: "Reverse Lunge", loc: ["home", "outdoor"], unit: "bw", w: 0, credits: { quads: 1, glutes: 0.5 }, note: "Knee on watch-list." },
+  { id: "bwsquat", name: "BW Squat", loc: ["home", "outdoor"], unit: "bw", w: 0, bw: true, credits: { quads: 1, glutes: 0.5 } },
+  { id: "reverselunge", name: "Reverse Lunge", loc: ["home", "outdoor"], unit: "bw", w: 0, bw: true, credits: { quads: 1, glutes: 0.5 }, note: "Knee on watch-list." },
   { id: "onearmrow", name: "1-Arm DB Row", loc: ["home"], unit: "db", w: 13.5, credits: { lats: 0.75, midback: 1, biceps: 0.5, reardelts: 0.25 } },
   { id: "bentrow", name: "Bent-over Row", loc: ["home"], unit: "db", w: 10, credits: { lats: 0.75, midback: 1, biceps: 0.5, reardelts: 0.25 } },
   { id: "renegaderow", name: "Renegade Row", loc: ["home"], unit: "db", w: 10, retired: true, credits: { lats: 0.75, midback: 1, biceps: 0.5, reardelts: 0.25 }, note: "Wrist-dependent; form before load." },
@@ -59,6 +60,7 @@ const EXERCISES = [
   { id: "lateral", name: "Lateral Raise", loc: ["home"], unit: "db", w: 5.5, credits: { sidedelts: 1 } },
   { id: "fly", name: "Reverse Fly", loc: ["home"], unit: "db", w: 5.5, credits: { reardelts: 1 } },
   { id: "wraise", name: "W-Raise", loc: ["home"], unit: "db", w: 5.5, credits: { reardelts: 1 } },
+  { id: "proneytw", name: "Prone Y-T-W Raise", loc: ["home", "outdoor"], unit: "bw", w: 0, bw: true, credits: { reardelts: 0.75, midback: 0.25 }, note: "Face down, arms unloaded. Accessory work — high reps." },
   { id: "frontraise", name: "Front Raise", loc: ["home"], unit: "db", w: 5.5, credits: { frontdelts: 1 } },
   { id: "uprightrow", name: "Upright Row", loc: ["home"], unit: "db", w: 10, credits: { sidedelts: 0.75, midback: 0.5, biceps: 0.25 }, note: "Keep elbows below shoulder height — wrist/shoulder watch-list." },
   { id: "curl", name: "DB Curl", loc: ["home"], unit: "db", w: 10, credits: { biceps: 1 } },
@@ -66,14 +68,16 @@ const EXERCISES = [
   { id: "skullcrusher", name: "Skullcrusher", loc: ["home"], unit: "db", w: 18, credits: { triceps: 1 }, note: "Elbow tingling x2 — one more signal benches this for OHTE." },
   { id: "ohte", name: "OHTE", loc: ["home"], unit: "db", w: 16, maint: true, credits: { triceps: 1 } },
   { id: "ohtesingle", name: "OHTE (single DB)", loc: ["home"], unit: "db", w: 13.5, credits: { triceps: 1, core: 0.25 } },
+  { id: "chairdip", name: "Chair Dip", loc: ["home", "outdoor"], unit: "load", w: 0, bw: true, credits: { triceps: 1, chest: 0.5, frontdelts: 0.5 }, note: "Hands on a chair/bench edge, feet out to make it harder." },
   { id: "pullover", name: "DB Pullover", loc: ["home"], unit: "db", w: 11.5, credits: { lats: 0.5, chest: 0.5 } },
   { id: "glutebridge", name: "SL Glute Bridge", loc: ["home"], unit: "db", w: 13.5, credits: { glutes: 1, hamstrings: 0.5 } },
   { id: "dlglutebridge", name: "Glute Bridge (double leg)", loc: ["home"], unit: "db", w: 16, credits: { glutes: 1, hamstrings: 0.5 } },
   { id: "calfraise", name: "Standing Calf Raise", loc: ["home", "outdoor"], unit: "db", w: 24, maint: true, credits: { calves: 1 }, note: "Equipment ceiling (2x24kg). Use step for ROM, not load." },
-  { id: "bicycle", name: "Bicycle Crunch", loc: ["home", "outdoor"], unit: "bw", w: 0, credits: { core: 1 } },
-  { id: "plank", name: "Plank (hold)", loc: ["home", "outdoor"], unit: "bw", w: 0, credits: { core: 1 }, note: "Retired at 120s for bicycle crunch. Log as reps (seconds) if needed." },
-  { id: "russiantwist", name: "Russian Twist", loc: ["home"], unit: "bw", w: 0, credits: { core: 1 } },
-  { id: "hangingknee", name: "Hanging Knee Raise", loc: ["outdoor", "gym"], unit: "bw", w: 0, credits: { core: 1 } },
+  { id: "slcalfstair", name: "Single-leg Calf Raise (stair)", loc: ["home", "outdoor"], unit: "load", w: 0, bw: true, credits: { calves: 1 }, note: "Off a stair edge for full stretch at the bottom." },
+  { id: "bicycle", name: "Bicycle Crunch", loc: ["home", "outdoor"], unit: "bw", w: 0, bw: true, credits: { core: 1 } },
+  { id: "plank", name: "Plank (hold)", loc: ["home", "outdoor"], unit: "bw", w: 0, bw: true, credits: { core: 1 }, note: "Retired at 120s for bicycle crunch. Log as reps (seconds) if needed." },
+  { id: "russiantwist", name: "Russian Twist", loc: ["home"], unit: "bw", w: 0, bw: true, credits: { core: 1 } },
+  { id: "hangingknee", name: "Hanging Knee Raise", loc: ["outdoor", "gym"], unit: "bw", w: 0, bw: true, credits: { core: 1 } },
   { id: "latpulldown", name: "Lat Pulldown", loc: ["gym"], unit: "db", w: 40, credits: { lats: 1, midback: 0.5, biceps: 0.5 } },
   { id: "legpress", name: "Leg Press", loc: ["gym"], unit: "db", w: 50, credits: { quads: 1, glutes: 0.5 } },
   { id: "legext", name: "Leg Extension", loc: ["gym"], unit: "db", w: 35, credits: { quads: 1 } },
@@ -98,17 +102,19 @@ const EXERCISES = [
   { id: "cablecurl", name: "Cable Curl", loc: ["gym"], unit: "db", w: 20, credits: { biceps: 1 } },
   { id: "calfmachine", name: "Calf Raise (machine)", loc: ["gym"], unit: "db", w: 60, credits: { calves: 1 } },
   { id: "cablecrunch", name: "Cable Crunch", loc: ["gym"], unit: "db", w: 35, credits: { core: 1 } },
-  { id: "pullup", name: "Pull-up (standard)", loc: ["outdoor"], unit: "load", w: 0, credits: { lats: 1, midback: 0.5, biceps: 0.5 } },
-  { id: "widepullup", name: "Wide Pull-up", loc: ["outdoor"], unit: "load", w: 0, credits: { lats: 0.75, midback: 0.75, biceps: 0.25 } },
-  { id: "widepullupassist", name: "Wide Pull-up (assisted)", loc: ["outdoor"], unit: "load", w: 0, credits: { lats: 0.75, midback: 0.75, biceps: 0.25 } },
-  { id: "chinup", name: "Chin-up", loc: ["outdoor"], unit: "load", w: 0, credits: { lats: 1, midback: 0.5, biceps: 1 } },
+  { id: "pullup", name: "Pull-up (standard)", loc: ["outdoor"], unit: "load", w: 0, bw: true, credits: { lats: 1, midback: 0.5, biceps: 0.5 } },
+  { id: "widepullup", name: "Wide Pull-up", loc: ["outdoor"], unit: "load", w: 0, bw: true, credits: { lats: 0.75, midback: 0.75, biceps: 0.25 } },
+  { id: "widepullupassist", name: "Wide Pull-up (assisted)", loc: ["outdoor"], unit: "load", w: 0, bw: true, credits: { lats: 0.75, midback: 0.75, biceps: 0.25 } },
+  { id: "chinup", name: "Chin-up", loc: ["outdoor"], unit: "load", w: 0, bw: true, credits: { lats: 1, midback: 0.5, biceps: 1 } },
 ];
 const EX_BY_ID = Object.fromEntries(EXERCISES.map((e) => [e.id, e]));
 // Gym normally sees everything (home + outdoor + gym-only); strict mode shows only gym-specific kit.
 // Home/outdoor always filter to their own kit (strict is a no-op for them).
+// Bodyweight is an equipment filter, not a place: every bw:true exercise from any location, strict ignored.
 const exTotal = (e) => Object.values(e.credits).reduce((s, c) => s + c, 0);
 const exForLoc = (loc, strict) => {
   const live = EXERCISES.filter((e) => !e.retired);
+  if (loc === "bodyweight") return live.filter((e) => e.bw);
   if (loc === "gym") return strict ? live.filter((e) => e.loc.includes("gym")) : live;
   return live.filter((e) => e.loc.includes(loc));
 };
@@ -865,7 +871,7 @@ function PlanView({ draft, totals, factor, state, planned, recent, onDate, onLoc
     <div style={{ padding: "14px 16px" }}>
       {/* date + location — same control as the Log tab; recency flags follow the selected day */}
       <div className="rounded-2xl" style={{ background: C.surface, border: `1px solid ${C.border}`, padding: "10px 12px", marginBottom: 12 }}>
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between" style={{ gap: 10, rowGap: 10, flexWrap: "wrap" }}>
           <div className="flex items-center" style={{ gap: 8 }}>
             <button onClick={() => onDate(addDaysISO(draft.date, -1))} className="rounded-md" style={{ width: 32, height: 32, background: C.surface3, color: C.text, fontSize: 16 }}>‹</button>
             <div style={{ minWidth: 116, textAlign: "center" }}>
@@ -1037,7 +1043,7 @@ function LogView({ draft, state, recent, onDate, onLoc, onEditSet, onAddSet, onR
     <div style={{ padding: "14px 16px" }}>
       {/* date + location */}
       <div className="rounded-2xl" style={{ background: C.surface, border: `1px solid ${C.border}`, padding: "10px 12px", marginBottom: 14 }}>
-        <div className="flex items-center justify-between" style={{ marginBottom: 10 }}>
+        <div className="flex items-center justify-between" style={{ marginBottom: 10, gap: 10, rowGap: 10, flexWrap: "wrap" }}>
           <div className="flex items-center" style={{ gap: 8 }}>
             <button onClick={() => onDate(addDaysISO(draft.date, -1))} className="rounded-md" style={{ width: 32, height: 32, background: C.surface3, color: C.text, fontSize: 16 }}>‹</button>
             <div style={{ minWidth: 116, textAlign: "center" }}>
@@ -1723,15 +1729,16 @@ function DragHandle({ onPointerDown }) {
   );
 }
 function LocToggle({ value, onChange, small, strict }) {
-  const opts = [["home", "Home"], ["outdoor", "Outdoor"], ["gym", "Gym"]];
+  const opts = [["home", "Home"], ["outdoor", "Outdoor"], ["gym", "Gym"], ["bodyweight", "Bodyweight"]];
   return (
-    <div className="flex items-center" style={{ gap: 8 }}>
+    <div className="flex items-center" style={{ gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
       <div className="inline-flex rounded-lg" style={{ background: C.surface2, border: `1px solid ${C.border}`, padding: 2 }}>
         {opts.map(([v, label]) => {
           const active = value === v;
-          const strictActive = active && strict;
+          // Bodyweight has no strict mode: repeat taps just reselect it.
+          const strictActive = active && strict && v !== "bodyweight";
           return (
-            <button key={v} onClick={() => onChange(v)} className="rounded-md font-medium" style={{ padding: small ? "6px 10px" : "7px 12px", fontSize: small ? 12.5 : 13, background: active ? C.surface3 : "transparent", color: active ? C.text : C.faint, boxShadow: strictActive ? `inset 0 0 0 1.5px ${C.blue}` : "none" }}>{label}</button>
+            <button key={v} onClick={() => { if (v === "bodyweight" && active) return; onChange(v); }} className="rounded-md font-medium" style={{ padding: small ? "6px 8px" : "7px 10px", fontSize: small ? 12 : 12.5, background: active ? C.surface3 : "transparent", color: active ? C.text : C.faint, boxShadow: strictActive ? `inset 0 0 0 1.5px ${C.blue}` : "none" }}>{label}</button>
           );
         })}
       </div>

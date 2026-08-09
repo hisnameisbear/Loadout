@@ -102,10 +102,10 @@ const EXERCISES = [
   { id: "cablecurl", name: "Cable Curl", loc: ["gym"], unit: "db", w: 20, credits: { biceps: 1 } },
   { id: "calfmachine", name: "Calf Raise (machine)", loc: ["gym"], unit: "db", w: 60, credits: { calves: 1 } },
   { id: "cablecrunch", name: "Cable Crunch", loc: ["gym"], unit: "db", w: 35, credits: { core: 1 } },
-  { id: "pullup", name: "Pull-up (standard)", loc: ["outdoor"], unit: "load", w: 0, bw: true, credits: { lats: 1, midback: 0.5, biceps: 0.5 } },
-  { id: "widepullup", name: "Wide Pull-up", loc: ["outdoor"], unit: "load", w: 0, bw: true, credits: { lats: 0.75, midback: 0.75, biceps: 0.25 } },
-  { id: "widepullupassist", name: "Wide Pull-up (assisted)", loc: ["outdoor"], unit: "load", w: 0, bw: true, credits: { lats: 0.75, midback: 0.75, biceps: 0.25 } },
-  { id: "chinup", name: "Chin-up", loc: ["outdoor"], unit: "load", w: 0, bw: true, credits: { lats: 1, midback: 0.5, biceps: 1 } },
+  { id: "pullup", name: "Pull-up (standard)", loc: ["outdoor"], unit: "load", w: 0, credits: { lats: 1, midback: 0.5, biceps: 0.5 } },
+  { id: "widepullup", name: "Wide Pull-up", loc: ["outdoor"], unit: "load", w: 0, credits: { lats: 0.75, midback: 0.75, biceps: 0.25 } },
+  { id: "widepullupassist", name: "Wide Pull-up (assisted)", loc: ["outdoor"], unit: "load", w: 0, credits: { lats: 0.75, midback: 0.75, biceps: 0.25 } },
+  { id: "chinup", name: "Chin-up", loc: ["outdoor"], unit: "load", w: 0, credits: { lats: 1, midback: 0.5, biceps: 1 } },
 ];
 const EX_BY_ID = Object.fromEntries(EXERCISES.map((e) => [e.id, e]));
 // Gym normally sees everything (home + outdoor + gym-only); strict mode shows only gym-specific kit.

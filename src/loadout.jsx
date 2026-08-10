@@ -865,6 +865,18 @@ function PlanView({ draft, totals, factor, state, planned, recent, onDate, onLoc
   const collideNames = collideKeys.map((k) => M_BY_KEY[k].name);
   const lastWorked = collideKeys.map((k) => recent.get(k).date).sort().pop();
   const locExercises = exForLoc(draft.location, draft.locStrict);
+  // Coverage list: closest-to-finishing first — still short of MEV (smallest gap first),
+  // then MEV met but short of target, then fully at target. Recomputes as the draft changes.
+  const coverageOrder = [...MUSCLES].sort((a, b) => {
+    const gapOf = (m) => {
+      const v = (totals[m.key] || 0) + (planned[m.key] || 0);
+      if (v < m.mev * factor) return [0, m.mev * factor - v];
+      if (v < m.target * factor) return [1, m.target * factor - v];
+      return [2, 0];
+    };
+    const [ta, ga] = gapOf(a), [tb, gb] = gapOf(b);
+    return ta - tb || ga - gb || MUSCLES.indexOf(a) - MUSCLES.indexOf(b);
+  });
   const setsOf = (exId) => { const ex = draft.exercises.find((e) => e.exId === exId); return ex ? ex.sets.length : 0; };
 
   return (
@@ -905,7 +917,7 @@ function PlanView({ draft, totals, factor, state, planned, recent, onDate, onLoc
             {[...recent.values()].some((r) => r.level === "synergist") && <span style={{ fontSize: 10, color: C.violet, marginLeft: 6 }}>● synergist</span>}
           </span>
         </div>
-        {MUSCLES.map((m) => (
+        {coverageOrder.map((m) => (
           <MuscleBar key={m.key} name={m.name} val={(totals[m.key] || 0) + (planned[m.key] || 0)} mev={m.mev * factor} target={m.target * factor} compact flag={recent.get(m.key)?.level} />
         ))}
       </div>

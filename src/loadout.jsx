@@ -865,9 +865,10 @@ function PlanView({ draft, totals, factor, state, planned, recent, onDate, onLoc
   const collideNames = collideKeys.map((k) => M_BY_KEY[k].name);
   const lastWorked = collideKeys.map((k) => recent.get(k).date).sort().pop();
   const locExercises = exForLoc(draft.location, draft.locStrict);
-  // Coverage list: closest-to-finishing first, ranked by proportion of the bar cleared so a
-  // 4-set MEV and a 6-set MEV compare fairly. Tier 0 = still short of MEV (highest % first),
-  // tier 1 = MEV met but short of target, tier 2 = at target. Ties: bigger MEV first.
+  // Coverage list: most work left first. Tier 0 = still short of MEV (least complete at the
+  // top), tier 1 = MEV met but short of target, tier 2 = at target — so whatever needs the
+  // most attention leads and finished muscles sink. Completion is measured as a proportion of
+  // the bar so a 4-set MEV and a 6-set MEV compare fairly; ties go to the bigger MEV.
   // Recomputes from the live draft, so it re-sorts as exercises and sets are added.
   const coverageOrder = [...MUSCLES].sort((a, b) => {
     const rank = (m) => {
@@ -878,7 +879,7 @@ function PlanView({ draft, totals, factor, state, planned, recent, onDate, onLoc
       return [2, 1];
     };
     const [ta, pa] = rank(a), [tb, pb] = rank(b);
-    return ta - tb || pb - pa || b.mev - a.mev || MUSCLES.indexOf(a) - MUSCLES.indexOf(b);
+    return ta - tb || pa - pb || b.mev - a.mev || MUSCLES.indexOf(a) - MUSCLES.indexOf(b);
   });
   const setsOf = (exId) => { const ex = draft.exercises.find((e) => e.exId === exId); return ex ? ex.sets.length : 0; };
 

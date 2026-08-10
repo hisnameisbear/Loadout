@@ -865,17 +865,20 @@ function PlanView({ draft, totals, factor, state, planned, recent, onDate, onLoc
   const collideNames = collideKeys.map((k) => M_BY_KEY[k].name);
   const lastWorked = collideKeys.map((k) => recent.get(k).date).sort().pop();
   const locExercises = exForLoc(draft.location, draft.locStrict);
-  // Coverage list: closest-to-finishing first — still short of MEV (smallest gap first),
-  // then MEV met but short of target, then fully at target. Recomputes as the draft changes.
+  // Coverage list: closest-to-finishing first, ranked by proportion of the bar cleared so a
+  // 4-set MEV and a 6-set MEV compare fairly. Tier 0 = still short of MEV (highest % first),
+  // tier 1 = MEV met but short of target, tier 2 = at target. Ties: bigger MEV first.
+  // Recomputes from the live draft, so it re-sorts as exercises and sets are added.
   const coverageOrder = [...MUSCLES].sort((a, b) => {
-    const gapOf = (m) => {
+    const rank = (m) => {
       const v = (totals[m.key] || 0) + (planned[m.key] || 0);
-      if (v < m.mev * factor) return [0, m.mev * factor - v];
-      if (v < m.target * factor) return [1, m.target * factor - v];
-      return [2, 0];
+      const mev = m.mev * factor, tgt = m.target * factor;
+      if (v < mev) return [0, mev > 0 ? v / mev : 1];
+      if (v < tgt) return [1, tgt > 0 ? v / tgt : 1];
+      return [2, 1];
     };
-    const [ta, ga] = gapOf(a), [tb, gb] = gapOf(b);
-    return ta - tb || ga - gb || MUSCLES.indexOf(a) - MUSCLES.indexOf(b);
+    const [ta, pa] = rank(a), [tb, pb] = rank(b);
+    return ta - tb || pb - pa || b.mev - a.mev || MUSCLES.indexOf(a) - MUSCLES.indexOf(b);
   });
   const setsOf = (exId) => { const ex = draft.exercises.find((e) => e.exId === exId); return ex ? ex.sets.length : 0; };
 

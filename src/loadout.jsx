@@ -372,7 +372,10 @@ function MuscleBar({ name, val, mev, target, planned = 0, today = 0, compact = f
   const cap = Math.max(target, val, 1);
   const fillPct = Math.min(100, (val / cap) * 100);
   const pctOf = (x) => Math.min(100, (Math.max(0, x) / cap) * 100);
-  const earlier = Math.max(0, val - planned - today);
+  // Once a muscle is at MEV or target the bar keeps its tier colour — only split out
+  // today's amber segment while it's still short (red).
+  const amberToday = t === "red" ? today : 0;
+  const earlier = Math.max(0, val - planned - amberToday);
   const mevPct = target > 0 ? Math.min(100, (mev / cap) * 100) : 0;
   const fmt = (n) => (Number.isInteger(n) ? n : n.toFixed(1).replace(/\.0$/, ""));
   return (
@@ -382,14 +385,15 @@ function MuscleBar({ name, val, mev, target, planned = 0, today = 0, compact = f
         <span style={{ color: t === "neutral" ? C.faint : C.text, fontSize: 13 }}>{name}</span>
       </div>
       <div className="relative flex-1 rounded-full overflow-hidden" style={{ height: 8, background: C.surface3 }}>
-        {today <= 0 && planned <= 0 ? (
+        {amberToday <= 0 && planned <= 0 ? (
           <div className="absolute top-0 left-0 h-full rounded-full" style={{ width: `${fillPct}%`, background: col, transition: "width .35s ease" }} />
         ) : (
-          // Stacked: earlier this week (tier colour) · logged today (amber) · planned but unsaved (ghosted).
+          // Stacked: already banked (tier colour) · logged today while still short of MEV (amber)
+          // · planned but unsaved (ghosted tier colour).
           <>
             <div className="absolute top-0 left-0 h-full" style={{ width: `${pctOf(earlier)}%`, background: col, transition: "width .35s ease" }} />
-            <div className="absolute top-0 h-full" style={{ left: `${pctOf(earlier)}%`, width: `${pctOf(today)}%`, background: C.amber, transition: "width .35s ease, left .35s ease" }} />
-            <div className="absolute top-0 h-full" style={{ left: `${pctOf(earlier + today)}%`, width: `${pctOf(planned)}%`, background: col, opacity: 0.35, transition: "width .35s ease, left .35s ease" }} />
+            <div className="absolute top-0 h-full" style={{ left: `${pctOf(earlier)}%`, width: `${pctOf(amberToday)}%`, background: C.amber, transition: "width .35s ease, left .35s ease" }} />
+            <div className="absolute top-0 h-full" style={{ left: `${pctOf(earlier + amberToday)}%`, width: `${pctOf(planned)}%`, background: col, opacity: 0.35, transition: "width .35s ease, left .35s ease" }} />
           </>
         )}
         {mev > 0 && (

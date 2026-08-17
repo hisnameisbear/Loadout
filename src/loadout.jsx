@@ -159,6 +159,16 @@ function weekTotals(sessions, weekStart) {
   }
   return t;
 }
+function dayTotals(sessions, date) {
+  const t = {};
+  for (const s of sessions) {
+    if (s.date === date) {
+      const c = sessionCredits(s);
+      for (const [k, v] of Object.entries(c)) t[k] = (t[k] || 0) + v;
+    }
+  }
+  return t;
+}
 function tierOf(val, mev, target) {
   if (target > 0 && val >= target) return "blue";
   if (mev > 0 && val >= mev) return "green";
@@ -186,12 +196,11 @@ function recentMuscles(sessions, refISO) {
   return map;
 }
 
-/* Display-level recency: same today+yesterday window, but per-muscle levels.
+/* Display-level recency: today+yesterday window, graded by summed exercise credit.
    - core: never flags at all
-   - biceps/triceps/sidedelts/reardelts: summed exercise credits over the window;
-     >= 1.0 -> 'isolation' (amber warning), > 0 < 1.0 -> 'synergist' (blue FYI)
-   - all other muscles: presence -> 'isolation' (existing amber behaviour, unchanged) */
-const SYNERGIST_LEVEL_MUSCLES = new Set(["biceps", "triceps", "sidedelts", "reardelts"]);
+   - every other muscle: >= 1.0 credit -> 'isolation' (amber warning),
+     > 0 and < 1.0 -> 'synergist' (violet FYI, fine to train directly)
+   Credit counts once per exercise, not per set. */
 function recentMuscleLevels(sessions, refISO) {
   const prev = addDaysISO(refISO, -1);
   const sums = {};
@@ -211,7 +220,7 @@ function recentMuscleLevels(sessions, refISO) {
   const map = new Map();
   for (const [mk, sum] of Object.entries(sums)) {
     if (mk === "core" || sum <= 0) continue;
-    const level = SYNERGIST_LEVEL_MUSCLES.has(mk) && sum < 1 ? "synergist" : "isolation";
+    const level = sum < 1 ? "synergist" : "isolation";
     map.set(mk, { level, date: dates[mk] });
   }
   return map;
@@ -357,11 +366,13 @@ function Stepper({ value, onChange, step = 1, min = 0, width = 56 }) {
   );
 }
 
-function MuscleBar({ name, val, mev, target, planned = 0, compact = false, flag = false, onClick }) {
+function MuscleBar({ name, val, mev, target, planned = 0, today = 0, compact = false, flag = false, onClick }) {
   const t = tierOf(val, mev, target);
   const col = tierColor(t);
   const cap = Math.max(target, val, 1);
   const fillPct = Math.min(100, (val / cap) * 100);
+  const pctOf = (x) => Math.min(100, (Math.max(0, x) / cap) * 100);
+  const earlier = Math.max(0, val - planned - today);
   const mevPct = target > 0 ? Math.min(100, (mev / cap) * 100) : 0;
   const fmt = (n) => (Number.isInteger(n) ? n : n.toFixed(1).replace(/\.0$/, ""));
   return (
@@ -371,7 +382,16 @@ function MuscleBar({ name, val, mev, target, planned = 0, compact = false, flag 
         <span style={{ color: t === "neutral" ? C.faint : C.text, fontSize: 13 }}>{name}</span>
       </div>
       <div className="relative flex-1 rounded-full overflow-hidden" style={{ height: 8, background: C.surface3 }}>
-        <div className="absolute top-0 left-0 h-full rounded-full" style={{ width: `${fillPct}%`, background: col, transition: "width .35s ease" }} />
+        {today <= 0 && planned <= 0 ? (
+          <div className="absolute top-0 left-0 h-full rounded-full" style={{ width: `${fillPct}%`, background: col, transition: "width .35s ease" }} />
+        ) : (
+          // Stacked: earlier this week (tier colour) · logged today (amber) · planned but unsaved (ghosted).
+          <>
+            <div className="absolute top-0 left-0 h-full" style={{ width: `${pctOf(earlier)}%`, background: col, transition: "width .35s ease" }} />
+            <div className="absolute top-0 h-full" style={{ left: `${pctOf(earlier)}%`, width: `${pctOf(today)}%`, background: C.amber, transition: "width .35s ease, left .35s ease" }} />
+            <div className="absolute top-0 h-full" style={{ left: `${pctOf(earlier + today)}%`, width: `${pctOf(planned)}%`, background: col, opacity: 0.35, transition: "width .35s ease, left .35s ease" }} />
+          </>
+        )}
         {mev > 0 && (
           <div className="absolute top-0" style={{ left: `${mevPct}%`, width: 2, height: 8, background: C.bg, opacity: 0.9 }} />
         )}
@@ -447,6 +467,8 @@ export default function App() {
   const blockWeek = state ? weeksBetween(blockAnchor, todayISO()) + 1 : 1;
 
   const totals = useMemo(() => (state ? weekTotals(state.sessions, week) : {}), [state, week]);
+  // Volume logged today, shown as its own segment on the week bars.
+  const todayLogged = useMemo(() => (state ? dayTotals(state.sessions, todayISO()) : {}), [state]);
 
   if (!state) {
     return <div style={{ background: C.bg, color: C.muted, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "ui-sans-serif, system-ui, sans-serif" }}>Loading…</div>;
@@ -727,7 +749,7 @@ export default function App() {
                 .map((m) => ({ m, val: totals[m.key] || 0 }))
                 .sort((a, b) => ((a.m.mev === 0) !== (b.m.mev === 0) ? (a.m.mev === 0 ? 1 : -1) : b.val - a.val))
                 .map(({ m, val }) => (
-                  <MuscleBar key={m.key} name={m.name} val={val} mev={m.mev * factor} target={m.target * factor} />
+                  <MuscleBar key={m.key} name={m.name} val={val} today={todayLogged[m.key] || 0} mev={m.mev * factor} target={m.target * factor} />
                 ))}
             </div>
 
@@ -865,6 +887,8 @@ function PlanView({ draft, totals, factor, state, planned, recent, onDate, onLoc
   const collideNames = collideKeys.map((k) => M_BY_KEY[k].name);
   const lastWorked = collideKeys.map((k) => recent.get(k).date).sort().pop();
   const locExercises = exForLoc(draft.location, draft.locStrict);
+  // Volume already saved for the day being planned — shown amber, distinct from the unsaved draft.
+  const dayLogged = dayTotals(state.sessions, draft.date);
   // Coverage list: most work left first. Tier 0 = still short of MEV (least complete at the
   // top), tier 1 = MEV met but short of target, tier 2 = at target — so whatever needs the
   // most attention leads and finished muscles sink. Completion is measured as a proportion of
@@ -922,7 +946,7 @@ function PlanView({ draft, totals, factor, state, planned, recent, onDate, onLoc
           </span>
         </div>
         {coverageOrder.map((m) => (
-          <MuscleBar key={m.key} name={m.name} val={(totals[m.key] || 0) + (planned[m.key] || 0)} mev={m.mev * factor} target={m.target * factor} compact flag={recent.get(m.key)?.level} />
+          <MuscleBar key={m.key} name={m.name} val={(totals[m.key] || 0) + (planned[m.key] || 0)} today={dayLogged[m.key] || 0} planned={planned[m.key] || 0} mev={m.mev * factor} target={m.target * factor} compact flag={recent.get(m.key)?.level} />
         ))}
       </div>
 

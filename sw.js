@@ -1,4 +1,4 @@
-const CACHE_NAME = 'loadout-v25';
+const CACHE_NAME = 'loadout-v26';
 const PRECACHE = [
   './',
   './index.html',

@@ -124,14 +124,14 @@ const exForLoc = (loc, strict) => {
 const PRESETS = [
   { id: "min2", name: "Minimum week · 2 days", desc: "8 exercises, 53 sets/week. Space days 3–4 apart.",
     sessions: [
-      { name: "Day A", items: [["narrowfloorpress", 4], ["bentrow", 4], ["slrdl", 4], ["frontsquatalt", 3], ["uprightrow", 4], ["slcalfstair", 3], ["fly", 2], ["plank", 3]] },
-      { name: "Day B", items: [["narrowfloorpress", 4], ["bentrow", 4], ["slrdl", 4], ["frontsquatalt", 3], ["uprightrow", 4], ["slcalfstair", 3], ["fly", 2], ["plank", 2]] },
+      { name: "Day A", items: [["frontsquatalt", 3], ["narrowfloorpress", 4], ["slrdl", 4], ["bentrow", 4], ["uprightrow", 4], ["slcalfstair", 3], ["fly", 2], ["plank", 3]] },
+      { name: "Day B", items: [["frontsquatalt", 3], ["narrowfloorpress", 4], ["slrdl", 4], ["bentrow", 4], ["uprightrow", 4], ["slcalfstair", 3], ["fly", 2], ["plank", 2]] },
     ] },
   { id: "min3", name: "Minimum week · 3 days", desc: "Same 8 exercises, 54 sets/week, lighter days (16–20 sets).",
     sessions: [
-      { name: "Day A", items: [["narrowfloorpress", 3], ["bentrow", 3], ["slrdl", 3], ["frontsquatalt", 2], ["uprightrow", 3], ["slcalfstair", 2], ["fly", 2], ["plank", 2]] },
-      { name: "Day B", items: [["narrowfloorpress", 3], ["bentrow", 3], ["slrdl", 3], ["frontsquatalt", 2], ["uprightrow", 3], ["slcalfstair", 2], ["plank", 2]] },
-      { name: "Day C", items: [["narrowfloorpress", 2], ["bentrow", 2], ["slrdl", 2], ["frontsquatalt", 2], ["uprightrow", 2], ["slcalfstair", 2], ["fly", 2], ["plank", 2]] },
+      { name: "Day A", items: [["frontsquatalt", 2], ["narrowfloorpress", 3], ["slrdl", 3], ["bentrow", 3], ["uprightrow", 3], ["slcalfstair", 2], ["fly", 2], ["plank", 2]] },
+      { name: "Day B", items: [["frontsquatalt", 2], ["narrowfloorpress", 3], ["slrdl", 3], ["bentrow", 3], ["uprightrow", 3], ["slcalfstair", 2], ["plank", 2]] },
+      { name: "Day C", items: [["frontsquatalt", 2], ["narrowfloorpress", 2], ["slrdl", 2], ["bentrow", 2], ["uprightrow", 2], ["slcalfstair", 2], ["fly", 2], ["plank", 2]] },
     ] },
 ];
 
@@ -343,6 +343,7 @@ function seedState() {
 }
 
 const STORE_KEY = "loadout-state-v3";
+const DRAFT_KEY = "loadout-draft-v1"; // unsaved plan/log draft, kept separate from the persisted state schema
 async function loadStored() {
   try { const r = localStorage.getItem(STORE_KEY); return r ? JSON.parse(r) : null; }
   catch { return null; }
@@ -453,14 +454,33 @@ export default function App() {
   const [saveState, setSaveState] = useState("idle"); // idle|saving|saved|offline
   const firstLoad = useRef(true);
 
-  // load
+  // load (also restores an unsaved plan/log draft so a refresh doesn't lose it)
+  const draftReady = useRef(false);
   useEffect(() => {
     (async () => {
       const s = await loadStored();
       if (s) { setState(s); }
       else { const seed = seedState(); setState(seed); await saveStored(seed); }
+      try {
+        const raw = localStorage.getItem(DRAFT_KEY);
+        const dr = raw ? JSON.parse(raw) : null;
+        if (dr && Array.isArray(dr.exercises)) {
+          dr.exercises = dr.exercises.filter((e) => EX_BY_ID[e.exId] && Array.isArray(e.sets));
+          if (dr.exercises.length) setDraft(dr);
+        }
+      } catch { /* ignore a corrupt draft */ }
+      draftReady.current = true;
     })();
   }, []);
+
+  // persist the draft on every change; cleared when it's saved/discarded (draft -> null or empty)
+  useEffect(() => {
+    if (!draftReady.current) return;
+    try {
+      if (draft && draft.exercises.length) localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+      else localStorage.removeItem(DRAFT_KEY);
+    } catch { /* storage unavailable */ }
+  }, [draft]);
 
   // persist
   useEffect(() => {

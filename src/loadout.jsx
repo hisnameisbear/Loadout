@@ -124,14 +124,14 @@ const exForLoc = (loc, strict) => {
 const PRESETS = [
   { id: "min2", name: "Minimum week · 2 days", desc: "8 exercises, 53 sets/week. Space days 3–4 apart.",
     sessions: [
-      { name: "Day A", items: [["frontsquatalt", 3], ["narrowfloorpress", 4], ["slrdl", 4], ["bentrow", 4], ["uprightrow", 4], ["slcalfstair", 3], ["fly", 2], ["plank", 3]] },
-      { name: "Day B", items: [["frontsquatalt", 3], ["narrowfloorpress", 4], ["slrdl", 4], ["bentrow", 4], ["uprightrow", 4], ["slcalfstair", 3], ["fly", 2], ["plank", 2]] },
+      { name: "Day A", items: [["plank", 3], ["frontsquatalt", 3], ["narrowfloorpress", 4], ["slrdl", 4], ["bentrow", 4], ["uprightrow", 4], ["slcalfstair", 3], ["fly", 2]] },
+      { name: "Day B", items: [["plank", 2], ["frontsquatalt", 3], ["narrowfloorpress", 4], ["slrdl", 4], ["bentrow", 4], ["uprightrow", 4], ["slcalfstair", 3], ["fly", 2]] },
     ] },
   { id: "min3", name: "Minimum week · 3 days", desc: "Same 8 exercises, 54 sets/week, lighter days (16–20 sets).",
     sessions: [
-      { name: "Day A", items: [["frontsquatalt", 2], ["narrowfloorpress", 3], ["slrdl", 3], ["bentrow", 3], ["uprightrow", 3], ["slcalfstair", 2], ["fly", 2], ["plank", 2]] },
-      { name: "Day B", items: [["frontsquatalt", 2], ["narrowfloorpress", 3], ["slrdl", 3], ["bentrow", 3], ["uprightrow", 3], ["slcalfstair", 2], ["plank", 2]] },
-      { name: "Day C", items: [["frontsquatalt", 2], ["narrowfloorpress", 2], ["slrdl", 2], ["bentrow", 2], ["uprightrow", 2], ["slcalfstair", 2], ["fly", 2], ["plank", 2]] },
+      { name: "Day A", items: [["plank", 2], ["frontsquatalt", 2], ["narrowfloorpress", 3], ["slrdl", 3], ["bentrow", 3], ["uprightrow", 3], ["slcalfstair", 2], ["fly", 2]] },
+      { name: "Day B", items: [["plank", 2], ["frontsquatalt", 2], ["narrowfloorpress", 3], ["slrdl", 3], ["bentrow", 3], ["uprightrow", 3], ["slcalfstair", 2]] },
+      { name: "Day C", items: [["plank", 2], ["frontsquatalt", 2], ["narrowfloorpress", 2], ["slrdl", 2], ["bentrow", 2], ["uprightrow", 2], ["slcalfstair", 2], ["fly", 2]] },
     ] },
 ];
 

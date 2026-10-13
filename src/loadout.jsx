@@ -119,6 +119,22 @@ const exForLoc = (loc, strict) => {
   return live.filter((e) => e.loc.includes(loc));
 };
 
+/* ---------- Minimum-effective presets: every muscle at MEV from home kit ---------- */
+// Same 8 exercises each day; sets per exercise capped at 4 per session. Verified against MEV.
+const PRESETS = [
+  { id: "min2", name: "Minimum week · 2 days", desc: "8 exercises, 53 sets/week. Space days 3–4 apart.",
+    sessions: [
+      { name: "Day A", items: [["narrowfloorpress", 4], ["bentrow", 4], ["slrdl", 4], ["frontsquatalt", 3], ["uprightrow", 4], ["slcalfstair", 3], ["fly", 2], ["plank", 3]] },
+      { name: "Day B", items: [["narrowfloorpress", 4], ["bentrow", 4], ["slrdl", 4], ["frontsquatalt", 3], ["uprightrow", 4], ["slcalfstair", 3], ["fly", 2], ["plank", 2]] },
+    ] },
+  { id: "min3", name: "Minimum week · 3 days", desc: "Same 8 exercises, 54 sets/week, lighter days (16–20 sets).",
+    sessions: [
+      { name: "Day A", items: [["narrowfloorpress", 3], ["bentrow", 3], ["slrdl", 3], ["frontsquatalt", 2], ["uprightrow", 3], ["slcalfstair", 2], ["fly", 2], ["plank", 2]] },
+      { name: "Day B", items: [["narrowfloorpress", 3], ["bentrow", 3], ["slrdl", 3], ["frontsquatalt", 2], ["uprightrow", 3], ["slcalfstair", 2], ["plank", 2]] },
+      { name: "Day C", items: [["narrowfloorpress", 2], ["bentrow", 2], ["slrdl", 2], ["frontsquatalt", 2], ["uprightrow", 2], ["slcalfstair", 2], ["fly", 2], ["plank", 2]] },
+    ] },
+];
+
 /* ---------- Date helpers (local, YYYY-MM-DD) ---------- */
 const pad = (n) => String(n).padStart(2, "0");
 function todayISO() {
@@ -568,6 +584,18 @@ export default function App() {
     });
   };
 
+  // Load a preset day into the draft (replacing its exercises; confirms first if the draft has some).
+  const loadPreset = (presetName, session) => {
+    const cur = draft?.exercises?.length || 0;
+    if (cur > 0 && !window.confirm(`Replace the ${cur} exercise${cur === 1 ? "" : "s"} in this plan with ${presetName} · ${session.name}?`)) return;
+    setDraft((d) => {
+      const base = d || newDraft();
+      const exs = session.items.filter(([id]) => EX_BY_ID[id]).map(([id, n]) => ({ exId: id, sets: defaultSetRows(id, n) }));
+      return { ...base, exercises: exs };
+    });
+    setToast(`Loaded ${session.name} — ${session.items.reduce((a, [, n]) => a + n, 0)} sets.`);
+  };
+
   const runSuggest = () => {
     const ref = draft?.date || todayISO();
     // Skip only isolation-level recent work; synergist-level muscles are fine to train directly.
@@ -782,6 +810,7 @@ export default function App() {
             onDate={(date) => setDraft((d) => ({ ...d, date }))}
             onLoc={(loc) => setDraft((d) => (loc === d.location ? { ...d, locStrict: !d.locStrict } : { ...d, location: loc, locStrict: false }))}
             onSuggest={runSuggest}
+            onPreset={loadPreset}
             onOpenPicker={(mk) => setPicker(mk)}
             onSetSets={setExerciseSets}
             defaultSetsFor={defaultSetsFor}
@@ -873,7 +902,7 @@ export default function App() {
 /* ============================================================
    PLAN VIEW
    ============================================================ */
-function PlanView({ draft, totals, factor, state, planned, recent, onDate, onLoc, onSuggest, onOpenPicker, onSetSets, defaultSetsFor, onMove, onClear, onLog }) {
+function PlanView({ draft, totals, factor, state, planned, recent, onDate, onLoc, onSuggest, onPreset, onOpenPicker, onSetSets, defaultSetsFor, onMove, onClear, onLog }) {
   const [mode, setMode] = useState("muscle"); // 'muscle' | 'exercise'
   const [expanded, setExpanded] = useState(null);
   const exFlag = (e) => {
@@ -891,6 +920,7 @@ function PlanView({ draft, totals, factor, state, planned, recent, onDate, onLoc
   const collideNames = collideKeys.map((k) => M_BY_KEY[k].name);
   const lastWorked = collideKeys.map((k) => recent.get(k).date).sort().pop();
   const locExercises = exForLoc(draft.location, draft.locStrict);
+  const [presetsOpen, setPresetsOpen] = useState(false);
   // Volume already saved for the day being planned — shown amber, distinct from the unsaved draft.
   const dayLogged = dayTotals(state.sessions, draft.date);
   // Coverage list: most work left first. Tier 0 = still short of MEV (least complete at the
@@ -928,6 +958,26 @@ function PlanView({ draft, totals, factor, state, planned, recent, onDate, onLoc
         </div>
       </div>
       <button onClick={onSuggest} className="w-full rounded-lg font-semibold" style={{ background: C.surface2, color: C.blue, border: `1px solid ${C.blue}`, padding: "10px 0", fontSize: 13, marginBottom: 12 }}>✦ Suggest workout</button>
+
+      <div className="rounded-2xl" style={{ background: C.surface, border: `1px solid ${C.border}`, marginBottom: 12 }}>
+        <div onClick={() => setPresetsOpen((o) => !o)} className="flex items-center justify-between" style={{ padding: "10px 14px", cursor: "pointer" }}>
+          <span style={{ fontSize: 11, letterSpacing: 1.2, color: C.faint, textTransform: "uppercase" }}>Presets · minimum week</span>
+          <span style={{ color: C.faint, fontSize: 12 }}>{presetsOpen ? "▾" : "▸"}</span>
+        </div>
+        {presetsOpen && PRESETS.map((pr) => (
+          <div key={pr.id} style={{ padding: "0 14px 12px" }}>
+            <div style={{ fontSize: 13.5, fontWeight: 600 }}>{pr.name}</div>
+            <div style={{ fontSize: 11, color: C.faint, margin: "2px 0 8px" }}>{pr.desc}</div>
+            <div className="flex" style={{ gap: 6 }}>
+              {pr.sessions.map((se) => (
+                <button key={se.name} onClick={() => onPreset(pr.name, se)} className="flex-1 rounded-lg font-medium" style={{ background: C.surface2, border: `1px solid ${C.borderLite}`, color: C.text, padding: "8px 4px", fontSize: 12.5 }}>
+                  {se.name}<span className="font-mono" style={{ display: "block", fontSize: 10.5, color: C.faint }}>{se.items.reduce((a, [, n]) => a + n, 0)} sets</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
 
       {collideNames.length > 0 && (
         <div className="rounded-xl" style={{ border: `1px solid ${C.amber}`, padding: "10px 12px", marginBottom: 12, fontSize: 12.5, color: C.amber, lineHeight: 1.5 }}>

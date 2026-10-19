@@ -212,17 +212,25 @@ function recentMuscles(sessions, refISO) {
   return map;
 }
 
+// How a flagged day relates to the day being planned/logged, for the notes.
+const recencyNote = (name, date, ref) =>
+  date > ref ? `${name} is in a session logged for tomorrow as a synergist — fine to train directly.`
+  : date === ref ? `${name} was worked as a synergist today — fine to train directly.`
+  : `${name} worked as a synergist yesterday — fine to train directly.`;
 /* Display-level recency: today+yesterday window, graded by summed exercise credit.
    - core: never flags at all
    - every other muscle: >= 1.0 credit -> 'isolation' (amber warning),
      > 0 and < 1.0 -> 'synergist' (violet FYI, fine to train directly)
    Credit counts once per exercise, not per set. */
 function recentMuscleLevels(sessions, refISO) {
+  // Window is the day before, the day itself and the day after — so a session logged for
+  // tomorrow flags its muscles today ("don't work these now, you're training them tomorrow").
   const prev = addDaysISO(refISO, -1);
+  const next = addDaysISO(refISO, 1);
   const sums = {};
   const dates = {};
   for (const s of sessions) {
-    if (s.date === refISO || s.date === prev) {
+    if (s.date === refISO || s.date === prev || s.date === next) {
       for (const ex of s.exercises) {
         const meta = EX_BY_ID[ex.exId];
         if (!meta) continue;
@@ -1001,12 +1009,12 @@ function PlanView({ draft, totals, factor, state, planned, recent, onDate, onLoc
 
       {collideNames.length > 0 && (
         <div className="rounded-xl" style={{ border: `1px solid ${C.amber}`, padding: "10px 12px", marginBottom: 12, fontSize: 12.5, color: C.amber, lineHeight: 1.5 }}>
-          ⚠ {collideNames.join(", ")} worked {lastWorked ? prettyDate(lastWorked) : "recently"} (within 24h). If that was heavy, keep these moderate — heavy-after-heavy on the same muscle is the one to avoid.
+          ⚠ {collideNames.join(", ")} {lastWorked && lastWorked > draft.date ? "logged for" : "worked"} {lastWorked ? prettyDate(lastWorked) : "recently"} (within 24h). If that was heavy, keep these moderate — heavy-after-heavy on the same muscle is the one to avoid.
         </div>
       )}
       {synergistKeys.length > 0 && (
         <div className="rounded-xl" style={{ border: `1px solid ${C.border}`, padding: "10px 12px", marginBottom: 12, fontSize: 12.5, color: C.violet, lineHeight: 1.5 }}>
-          {synergistKeys.map((k) => `${M_BY_KEY[k].name} worked as a synergist yesterday — fine to train directly.`).join(" ")}
+          {synergistKeys.map((k) => recencyNote(M_BY_KEY[k].name, recent.get(k).date, draft.date)).join(" ")}
         </div>
       )}
 
@@ -1172,12 +1180,12 @@ function LogView({ draft, state, recent, onDate, onLoc, onEditSet, onAddSet, onR
 
       {collideNames.length > 0 && (
         <div className="rounded-xl" style={{ border: `1px solid ${C.amber}`, padding: "10px 12px", marginBottom: 14, fontSize: 12.5, color: C.amber, lineHeight: 1.5 }}>
-          ⚠ {collideNames.join(", ")} worked {lastWorked ? prettyDate(lastWorked) : "recently"} (within 24h). If that was heavy, don't go heavy again here — moderate-after-moderate is fine.
+          ⚠ {collideNames.join(", ")} {lastWorked && lastWorked > draft.date ? "logged for" : "worked"} {lastWorked ? prettyDate(lastWorked) : "recently"} (within 24h). If that was heavy, don't go heavy again here — moderate-after-moderate is fine.
         </div>
       )}
       {synergistKeys.length > 0 && (
         <div className="rounded-xl" style={{ border: `1px solid ${C.border}`, padding: "10px 12px", marginBottom: 14, fontSize: 12.5, color: C.violet, lineHeight: 1.5 }}>
-          {synergistKeys.map((k) => `${M_BY_KEY[k].name} worked as a synergist yesterday — fine to train directly.`).join(" ")}
+          {synergistKeys.map((k) => recencyNote(M_BY_KEY[k].name, recent.get(k).date, draft.date)).join(" ")}
         </div>
       )}
 

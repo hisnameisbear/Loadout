@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo, useRef } from "react";
 /* ============================================================
    LOADOUT — Harry's training tracker
    Single-file React artifact. Persists via window.storage.
-   Week runs Sat -> Fri. Colours: red < MEV, green = MEV, blue = target.
+   Live views use a rolling 7 days; history is Sat -> Fri weeks. Colours: red < MEV, green = MEV, blue = target.
    ============================================================ */
 
 const C = {
@@ -184,6 +184,27 @@ function dayTotals(sessions, date) {
     }
   }
   return t;
+}
+// Rolling 7 days ending on endISO (inclusive): endISO-6 .. endISO. Live views use this
+// instead of the Sat–Fri week so nothing resets and older sets drop off one day at a time.
+function rollingTotals(sessions, endISO) {
+  const start = addDaysISO(endISO, -6);
+  const t = {};
+  for (const s of sessions) {
+    if (s.date >= start && s.date <= endISO) {
+      const c = sessionCredits(s);
+      for (const [k, v] of Object.entries(c)) t[k] = (t[k] || 0) + v;
+    }
+  }
+  return t;
+}
+// Volume leaving the rolling window in the next two days: [{ t: totals, day: "Sat" }, ...].
+const DOW_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+function expiringSoon(sessions, endISO) {
+  return [1, 2].map((ahead) => ({
+    t: dayTotals(sessions, addDaysISO(endISO, ahead - 7)),
+    day: DOW_SHORT[parseISO(addDaysISO(endISO, ahead)).getDay()],
+  }));
 }
 function tierOf(val, mev, target) {
   if (target > 0 && val >= target) return "blue";
@@ -391,7 +412,7 @@ function Stepper({ value, onChange, step = 1, min = 0, width = 56 }) {
   );
 }
 
-function MuscleBar({ name, val, mev, target, planned = 0, today = 0, compact = false, flag = false, onClick }) {
+function MuscleBar({ name, val, mev, target, planned = 0, today = 0, expiring = [], compact = false, flag = false, onClick }) {
   const t = tierOf(val, mev, target);
   const col = tierColor(t);
   const cap = Math.max(target, val, 1);
@@ -403,12 +424,16 @@ function MuscleBar({ name, val, mev, target, planned = 0, today = 0, compact = f
   const earlier = Math.max(0, val - planned - amberToday);
   const mevPct = target > 0 ? Math.min(100, (mev / cap) * 100) : 0;
   const fmt = (n) => (Number.isInteger(n) ? n : n.toFixed(1).replace(/\.0$/, ""));
+  // Sets leaving the rolling window in the next 2 days: striped over the oldest (left) part of the bar.
+  const expiringTotal = Math.min(earlier, expiring.reduce((a, e) => a + e.n, 0));
+  const expiringLabel = expiring.filter((e) => e.n > 0).map((e) => `−${fmt(e.n)} ${e.day}`).join(" · ");
   return (
     <div className="flex items-center" style={{ gap: 10, padding: compact ? "5px 0" : "7px 0", cursor: onClick ? "pointer" : "default" }} onClick={onClick}>
       <div className="flex items-center" style={{ width: 84, flexShrink: 0, gap: 5 }}>
         {flag && <span title={flag === "synergist" ? "synergist work yesterday — fine to train directly" : "worked within 24h"} style={{ width: 6, height: 6, borderRadius: 99, background: flag === "synergist" ? C.violet : C.amber, flexShrink: 0 }} />}
         <span style={{ color: t === "neutral" ? C.faint : C.text, fontSize: 13 }}>{name}</span>
       </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
       <div className="relative flex-1 rounded-full overflow-hidden" style={{ height: 8, background: C.surface3 }}>
         {amberToday <= 0 && planned <= 0 ? (
           <div className="absolute top-0 left-0 h-full rounded-full" style={{ width: `${fillPct}%`, background: col, transition: "width .35s ease" }} />
@@ -421,9 +446,14 @@ function MuscleBar({ name, val, mev, target, planned = 0, today = 0, compact = f
             <div className="absolute top-0 h-full" style={{ left: `${pctOf(earlier + amberToday)}%`, width: `${pctOf(planned)}%`, background: col, opacity: 0.35, transition: "width .35s ease, left .35s ease" }} />
           </>
         )}
+        {expiringTotal > 0 && (
+          <div className="absolute top-0 left-0 h-full" title="drops off within 2 days" style={{ width: `${pctOf(expiringTotal)}%`, backgroundImage: `repeating-linear-gradient(135deg, ${C.bg}99 0 2px, transparent 2px 5px)` }} />
+        )}
         {mev > 0 && (
           <div className="absolute top-0" style={{ left: `${mevPct}%`, width: 2, height: 8, background: C.bg, opacity: 0.9 }} />
         )}
+      </div>
+      {expiringLabel && <div className="font-mono" style={{ fontSize: 9.5, color: C.faint, marginTop: 3, lineHeight: 1 }}>{expiringLabel}</div>}
       </div>
       <div className="font-mono text-right" style={{ width: 58, flexShrink: 0, fontSize: 12.5, color: t === "neutral" ? C.faint : C.text }}>
         <span style={{ color: col, fontWeight: 600 }}>{fmt(val)}</span>
@@ -514,7 +544,8 @@ export default function App() {
   }, [state, week]);
   const blockWeek = state ? weeksBetween(blockAnchor, todayISO()) + 1 : 1;
 
-  const totals = useMemo(() => (state ? weekTotals(state.sessions, week) : {}), [state, week]);
+  const totals = useMemo(() => (state ? rollingTotals(state.sessions, todayISO()) : {}), [state]);
+  const expiringToday = useMemo(() => (state ? expiringSoon(state.sessions, todayISO()) : []), [state]);
   // Volume logged today, shown as its own segment on the week bars.
   const todayLogged = useMemo(() => (state ? dayTotals(state.sessions, todayISO()) : {}), [state]);
 
@@ -546,7 +577,7 @@ export default function App() {
     const c = meta.credits[mk] || 0;
     if (!c) return Math.min(3, cap);
     const planned = draftTotalsPlanned();
-    const cur = (totals[mk] || 0) + (planned[mk] || 0);
+    const cur = (rollingTotals(state.sessions, draft?.date || todayISO())[mk] || 0) + (planned[mk] || 0);
     const m = M_BY_KEY[mk];
     const T = cur < m.mev * factor ? m.mev * factor : m.target * factor;
     const needed = Math.ceil((T - cur) / c - 1e-9);
@@ -632,7 +663,7 @@ export default function App() {
     // Core never flags in the UI, but back-to-back core days still aren't suggested (unchanged).
     if (recentMuscles(state.sessions, ref).has("core")) exclude.add("core");
     const trendAvg = trendAverages(state.sessions, state.deloadWeeks, 4);
-    const weekT = weekTotals(state.sessions, startOfWeekISO(ref));
+    const weekT = rollingTotals(state.sessions, ref);
     const { plan, uncoverable } = suggestPlan(weekT, draft?.location || state.lastLocation, exclude, draft?.locStrict, trendAvg);
     if (!plan.length) {
       setToast(uncoverable.length ? "Nothing left to fill at this location." : "Everything's already at MEV for the week.");
@@ -779,10 +810,10 @@ export default function App() {
 
             <div className="rounded-2xl" style={{ background: C.surface, border: `1px solid ${C.border}`, padding: "10px 14px 12px", marginBottom: 14 }}>
               <div className="flex items-center justify-between" style={{ marginBottom: 8 }}>
-                <span style={{ fontSize: 11, letterSpacing: 1.2, color: C.faint, textTransform: "uppercase" }}>Week of {prettyDate(week)}</span>
+                <span style={{ fontSize: 11, letterSpacing: 1.2, color: C.faint, textTransform: "uppercase" }}>Last 7 days</span>
                 <span style={{ fontSize: 10, color: C.faint }}>lit = session logged</span>
               </div>
-              <WeekStrip weekStart={week} sessions={state.sessions} />
+              <WeekStrip weekStart={addDaysISO(todayISO(), -6)} sessions={state.sessions} />
             </div>
 
             <div className="flex" style={{ gap: 8, marginBottom: 14 }}>
@@ -802,15 +833,16 @@ export default function App() {
 
             <div className="rounded-2xl" style={{ background: C.surface, border: `1px solid ${C.border}`, padding: "10px 14px 12px" }}>
               <div className="flex items-center justify-between" style={{ marginBottom: 4 }}>
-                <span style={{ fontSize: 11, letterSpacing: 1.2, color: C.faint, textTransform: "uppercase" }}>This week</span>
+                <span style={{ fontSize: 11, letterSpacing: 1.2, color: C.faint, textTransform: "uppercase" }}>Last 7 days</span>
                 <span style={{ fontSize: 10, color: C.faint }}>current / mev · target</span>
               </div>
               {[...MUSCLES]
                 .map((m) => ({ m, val: totals[m.key] || 0 }))
                 .sort((a, b) => ((a.m.mev === 0) !== (b.m.mev === 0) ? (a.m.mev === 0 ? 1 : -1) : b.val - a.val))
                 .map(({ m, val }) => (
-                  <MuscleBar key={m.key} name={m.name} val={val} today={todayLogged[m.key] || 0} mev={m.mev * factor} target={m.target * factor} />
+                  <MuscleBar key={m.key} name={m.name} val={val} today={todayLogged[m.key] || 0} expiring={expiringToday.map((e) => ({ n: e.t[m.key] || 0, day: e.day }))} mev={m.mev * factor} target={m.target * factor} />
                 ))}
+              <div style={{ fontSize: 10.5, color: C.faint, paddingTop: 8, lineHeight: 1.5 }}>Rolling 7 days — each set counts for a week, then drops off. Striped = drops off in the next 2 days.</div>
             </div>
 
             <div className="flex" style={{ gap: 10, marginTop: 14 }}>
@@ -830,7 +862,7 @@ export default function App() {
         {tab === "plan" && draft && (
           <PlanView
             draft={draft}
-            totals={weekTotals(state.sessions, startOfWeekISO(draft.date))}
+            totals={rollingTotals(state.sessions, draft.date)}
             factor={state.deloadWeeks.includes(startOfWeekISO(draft.date)) ? 0.5 : 1}
             state={state}
             planned={draftTotalsPlanned()}
@@ -951,6 +983,7 @@ function PlanView({ draft, totals, factor, state, planned, recent, onDate, onLoc
   const [presetsOpen, setPresetsOpen] = useState(false);
   // Volume already saved for the day being planned — shown amber, distinct from the unsaved draft.
   const dayLogged = dayTotals(state.sessions, draft.date);
+  const expiring = expiringSoon(state.sessions, draft.date);
   // Coverage list: most work left first. Tier 0 = still short of MEV (least complete at the
   // top), tier 1 = MEV met but short of target, tier 2 = at target — so whatever needs the
   // most attention leads and finished muscles sink. Completion is measured as a proportion of
@@ -1021,14 +1054,14 @@ function PlanView({ draft, totals, factor, state, planned, recent, onDate, onLoc
       {/* Coverage readout */}
       <div className="rounded-2xl" style={{ background: C.surface, border: `1px solid ${C.border}`, padding: "10px 14px 8px", marginBottom: 12 }}>
         <div className="flex items-center justify-between" style={{ marginBottom: 4 }}>
-          <span style={{ fontSize: 11, letterSpacing: 1.2, color: C.faint, textTransform: "uppercase" }}>Coverage if logged · week total</span>
+          <span style={{ fontSize: 11, letterSpacing: 1.2, color: C.faint, textTransform: "uppercase" }}>Coverage if logged · last 7 days</span>
           <span>
             {[...recent.values()].some((r) => r.level === "isolation") && <span style={{ fontSize: 10, color: C.amber }}>● worked &lt;24h</span>}
             {[...recent.values()].some((r) => r.level === "synergist") && <span style={{ fontSize: 10, color: C.violet, marginLeft: 6 }}>● synergist</span>}
           </span>
         </div>
         {coverageOrder.map((m) => (
-          <MuscleBar key={m.key} name={m.name} val={(totals[m.key] || 0) + (planned[m.key] || 0)} today={dayLogged[m.key] || 0} planned={planned[m.key] || 0} mev={m.mev * factor} target={m.target * factor} compact flag={recent.get(m.key)?.level} />
+          <MuscleBar key={m.key} name={m.name} val={(totals[m.key] || 0) + (planned[m.key] || 0)} today={dayLogged[m.key] || 0} planned={planned[m.key] || 0} expiring={expiring.map((e) => ({ n: e.t[m.key] || 0, day: e.day }))} mev={m.mev * factor} target={m.target * factor} compact flag={recent.get(m.key)?.level} />
         ))}
       </div>
 
@@ -1892,8 +1925,8 @@ function MuscleTags({ credits, recent }) {
 // 7-day Sat→Fri strip: violet-lit cell = a session was logged that day.
 function WeekStrip({ weekStart, sessions }) {
   const today = todayISO();
-  const labels = ["Sa", "Su", "Mo", "Tu", "We", "Th", "Fr"];
   const days = Array.from({ length: 7 }, (_, i) => addDaysISO(weekStart, i));
+  const labels = days.map((d) => ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"][parseISO(d).getDay()]);
   return (
     <div className="flex" style={{ gap: 6 }}>
       {days.map((d, i) => {
